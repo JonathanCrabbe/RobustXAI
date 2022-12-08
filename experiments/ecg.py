@@ -1,17 +1,17 @@
 import torch
 import os
 import logging
-import argparse
-import itertools
-import pandas as pd
 import numpy as np
+import argparse
+import seaborn as sns
 import torch.nn.functional as F
+import matplotlib.pyplot as plt
 from pathlib import Path
 from torch.utils.data import DataLoader
 from datasets.loaders import ECGDataset
 from models.time_series import AllCNNECG, ClassifierECG
 from utils.symmetries import Translation1D
-from  utils.metrics import AverageMeter
+from utils.metrics import AverageMeter
 from tqdm import tqdm
 
 concept_to_class = {
@@ -62,6 +62,7 @@ def feature_importance(
 
     transl = Translation1D(12)
     mae = AverageMeter('mae')
+    maes = np.empty(0)
     switch = AverageMeter('switch')
     for x, _ in test_loader:
         x = x.to(device)
@@ -72,10 +73,14 @@ def feature_importance(
         c1 = torch.amax(p1, -1)
         p2 = F.softmax(model(x_transl), -1)
         c2 = torch.amax(p2, -1)
+        maes = np.concatenate((maes, torch.sum(torch.abs(p1-p2), dim=-1).detach().cpu().numpy()))
         mae.update(torch.mean(torch.abs(p1-p2)), len(x))
         switch.update(torch.mean(torch.where(c1 == c2, 0., 1.)), len(x))
     print(mae.avg)
+    print(np.percentile(maes, 50))
     print(switch.avg)
+    sns.histplot(maes)
+    plt.show()
 
 
 if __name__ == "__main__":
