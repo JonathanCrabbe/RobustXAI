@@ -11,10 +11,7 @@ class Translation1D(nn.Module):
 
     def forward(self, x):
         T = x.shape[-1]
-        if not self.n_steps:
-            n_steps = random.randint(0, T-1)
-        else:
-            n_steps = self.n_steps
+        n_steps = self.n_steps if self.n_steps else random.randint(0, T-1)
         perm_ids = torch.arange(0, T).to(x.device)
         perm_ids = perm_ids - n_steps
         perm_ids = perm_ids % T

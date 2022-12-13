@@ -14,7 +14,9 @@ from utils.symmetries import Translation1D
 from utils.metrics import AverageMeter
 from utils.misc import set_random_seed
 from tqdm import tqdm
-from interpretability.robustness import invariance
+from interpretability.robustness import invariance, equivariance
+from interpretability.feature import FeatureImportance
+from captum.attr import IntegratedGradients
 
 concept_to_class = {
     "Supraventricular": 1,
@@ -64,14 +66,15 @@ def feature_importance(
     models = [AllCNN(latent_dim, f'{model_name}_allcnn'), StandardCNN(latent_dim, f'{model_name}_standard')]
     model_dir = model_dir/model_name
     for model in models:
-        model.load_state_dict(torch.load(model_dir/ f"{model.name}.pt"), strict=False)
+        model.load_state_dict(torch.load(model_dir/f"{model.name}.pt"), strict=False)
         model.to(device)
         model.eval()
+        feat_importance = FeatureImportance(IntegratedGradients(model))
         translation = Translation1D()
-        invariance_scores = invariance(model, translation, test_loader, device)
-        print(torch.mean(invariance_scores))
-        sns.histplot(invariance_scores)
-        plt.show()
+        model_invariance = invariance(model, translation, test_loader, device)
+        explanation_equivariance = equivariance(feat_importance, translation, test_loader, device)
+        logging.info(f'Output invariance for {model.name}: {torch.mean(model_invariance):.3g}')
+        logging.info(f'Explanation equivariance for {model.name}: {torch.mean(explanation_equivariance):.3g}')
 
 
 if __name__ == "__main__":
