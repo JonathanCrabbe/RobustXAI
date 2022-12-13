@@ -1,22 +1,17 @@
 import torch
 import os
 import logging
-import numpy as np
 import argparse
-import seaborn as sns
-import torch.nn.functional as F
-import matplotlib.pyplot as plt
 from pathlib import Path
 from torch.utils.data import DataLoader
 from datasets.loaders import ECGDataset
 from models.time_series import AllCNN, StandardCNN
 from utils.symmetries import Translation1D
-from utils.metrics import AverageMeter
 from utils.misc import set_random_seed
-from tqdm import tqdm
-from interpretability.robustness import invariance, equivariance
+from itertools import product
+from interpretability.robustness import invariance, equivariance, cos_similarity
 from interpretability.feature import FeatureImportance
-from captum.attr import IntegratedGradients
+from captum.attr import IntegratedGradients, GradientShap, FeaturePermutation, FeatureAblation, Saliency
 
 concept_to_class = {
     "Supraventricular": 1,
@@ -46,7 +41,7 @@ def train_ecg_model(
     train_loader = DataLoader(train_set, batch_size, shuffle=True)
     test_loader = DataLoader(test_set, batch_size, shuffle=True)
     for model in models:
-        logging.info(f'Now fitting a {model.name} classifier.')
+        logging.info(f'Now fitting a {model.name} classifier')
         model.fit(device, train_loader, test_loader, model_dir)
 
 
@@ -63,18 +58,27 @@ def feature_importance(
     set_random_seed(random_seed)
     test_set = ECGDataset(data_dir, train=False, balance_dataset=False)
     test_loader = DataLoader(test_set, batch_size, shuffle=True)
-    models = [AllCNN(latent_dim, f'{model_name}_allcnn'), StandardCNN(latent_dim, f'{model_name}_standard')]
+    models = {'All Convolutional': AllCNN(latent_dim, f'{model_name}_allcnn'),
+              'Standard': StandardCNN(latent_dim, f'{model_name}_standard')}
+    attr_methods = {'Integrated Gradients': IntegratedGradients,
+                    'GradientShap': GradientShap,
+                    'Saliency': Saliency,
+                    'Feature Permutation': FeaturePermutation,
+                    'Feature Ablation': FeatureAblation
+                    }
     model_dir = model_dir/model_name
-    for model in models:
+    translation = Translation1D()
+    for model_type, attr_name in product(models, attr_methods):
+        logging.info(f'Computing the equivariance scores for {model_type} classifier and {attr_name} attribution')
+        model = models[model_type]
         model.load_state_dict(torch.load(model_dir/f"{model.name}.pt"), strict=False)
         model.to(device)
         model.eval()
-        feat_importance = FeatureImportance(IntegratedGradients(model))
-        translation = Translation1D()
-        model_invariance = invariance(model, translation, test_loader, device)
-        explanation_equivariance = equivariance(feat_importance, translation, test_loader, device)
-        logging.info(f'Output invariance for {model.name}: {torch.mean(model_invariance):.3g}')
-        logging.info(f'Explanation equivariance for {model.name}: {torch.mean(explanation_equivariance):.3g}')
+        feat_importance = FeatureImportance(attr_methods[attr_name](model))
+        model_invariance = invariance(model, translation, test_loader, device, N_samp=5)
+        explanation_equivariance = equivariance(feat_importance, translation, test_loader, device, N_samp=5, distance=cos_similarity)
+        logging.info(f'Output invariance for {model_type}: {torch.mean(model_invariance):.3g}')
+        logging.info(f'Explanation equivariance for {attr_name}: {torch.mean(explanation_equivariance):.3g}')
 
 
 if __name__ == "__main__":
