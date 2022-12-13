@@ -2,16 +2,19 @@ import torch
 import os
 import logging
 import argparse
+import pandas as pd
 from pathlib import Path
 from torch.utils.data import DataLoader
 from datasets.loaders import ECGDataset
 from models.time_series import AllCNN, StandardCNN
 from utils.symmetries import Translation1D
 from utils.misc import set_random_seed
+from utils.plots import robustness_plots
 from itertools import product
-from interpretability.robustness import invariance, equivariance, cos_similarity
+from interpretability.robustness import invariance, equivariance
 from interpretability.feature import FeatureImportance
 from captum.attr import IntegratedGradients, GradientShap, FeaturePermutation, FeatureAblation, Saliency
+
 
 concept_to_class = {
     "Supraventricular": 1,
@@ -49,6 +52,7 @@ def feature_importance(
     random_seed: int,
     latent_dim: int,
     batch_size: int,
+    plot: bool,
     model_name: str = "model",
     model_dir: Path = Path.cwd() / f"results/ecg/",
     data_dir: Path = Path.cwd() / "datasets/ecg",
@@ -68,6 +72,7 @@ def feature_importance(
                     }
     model_dir = model_dir/model_name
     translation = Translation1D()
+    metrics = []
     for model_type, attr_name in product(models, attr_methods):
         logging.info(f'Computing the equivariance scores for {model_type} classifier and {attr_name} attribution')
         model = models[model_type]
@@ -75,10 +80,17 @@ def feature_importance(
         model.to(device)
         model.eval()
         feat_importance = FeatureImportance(attr_methods[attr_name](model))
-        model_invariance = invariance(model, translation, test_loader, device, N_samp=5)
-        explanation_equivariance = equivariance(feat_importance, translation, test_loader, device, N_samp=5, distance=cos_similarity)
+        model_invariance = invariance(model, translation, test_loader, device, N_samp=1)
+        explanation_equivariance = equivariance(feat_importance, translation, test_loader, device, N_samp=1)
+        for inv, equiv in zip(model_invariance, explanation_equivariance):
+            metrics.append([model_type, attr_name, inv.item(), equiv.item()])
         logging.info(f'Output invariance for {model_type}: {torch.mean(model_invariance):.3g}')
         logging.info(f'Explanation equivariance for {attr_name}: {torch.mean(explanation_equivariance):.3g}')
+    metrics_df = pd.DataFrame(data=metrics,
+                              columns=['Model Type', 'Explanation', 'Model Invariance', 'Explanation Equivariance'])
+    metrics_df.to_csv(model_dir/'metrics.csv', index=False)
+    if plot:
+        robustness_plots(model_dir)
 
 
 if __name__ == "__main__":
@@ -98,6 +110,6 @@ if __name__ == "__main__":
         train_ecg_model(args.seed, args.latent_dim, args.batch_size, model_name=model_name)
     match args.name:
         case 'feature_importance':
-            feature_importance(args.seed, args.latent_dim, args.batch_size, model_name)
+            feature_importance(args.seed, args.latent_dim, args.batch_size, args.plot, model_name)
         case other:
             logging.info('Unrecognized experiment name.')
