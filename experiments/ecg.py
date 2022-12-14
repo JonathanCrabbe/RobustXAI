@@ -9,7 +9,7 @@ from datasets.loaders import ECGDataset
 from models.time_series import AllCNN, StandardCNN
 from utils.symmetries import Translation1D
 from utils.misc import set_random_seed
-from utils.plots import robustness_plots
+from utils.plots import robustness_plots, relaxing_invariance_plots
 from itertools import product
 from interpretability.robustness import invariance, equivariance
 from interpretability.feature import FeatureImportance
@@ -74,7 +74,7 @@ def feature_importance(
     translation = Translation1D()
     metrics = []
     for model_type, attr_name in product(models, attr_methods):
-        logging.info(f'Computing the equivariance scores for {model_type} classifier and {attr_name} attribution')
+        logging.info(f'Now working with classifier = {model_type} and explainer = {attr_name}')
         model = models[model_type]
         model.load_state_dict(torch.load(model_dir/f"{model.name}.pt"), strict=False)
         model.to(device)
@@ -84,19 +84,18 @@ def feature_importance(
         explanation_equivariance = equivariance(feat_importance, translation, test_loader, device, N_samp=1)
         for inv, equiv in zip(model_invariance, explanation_equivariance):
             metrics.append([model_type, attr_name, inv.item(), equiv.item()])
-        logging.info(f'Output invariance for {model_type}: {torch.mean(model_invariance):.3g}')
-        logging.info(f'Explanation equivariance for {attr_name}: {torch.mean(explanation_equivariance):.3g}')
+        logging.info(f'Model invariance: {torch.mean(model_invariance):.3g}')
+        logging.info(f'Explanation equivariance: {torch.mean(explanation_equivariance):.3g}')
     metrics_df = pd.DataFrame(data=metrics,
                               columns=['Model Type', 'Explanation', 'Model Invariance', 'Explanation Equivariance'])
     metrics_df.to_csv(model_dir/'metrics.csv', index=False)
     if plot:
-        robustness_plots(model_dir)
+        robustness_plots(model_dir, 'ecg')
+        relaxing_invariance_plots(model_dir, 'ecg')
 
 
 if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-    )
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default="feature_importance")
     parser.add_argument("--seed", type=int, default=42)
@@ -112,4 +111,4 @@ if __name__ == "__main__":
         case 'feature_importance':
             feature_importance(args.seed, args.latent_dim, args.batch_size, args.plot, model_name)
         case other:
-            logging.info('Unrecognized experiment name.')
+            raise ValueError('Unrecognized experiment name.')
