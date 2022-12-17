@@ -13,7 +13,7 @@ from utils.plots import robustness_plots, relaxing_invariance_plots
 from itertools import product
 from interpretability.robustness import invariance, equivariance
 from interpretability.feature import FeatureImportance
-from captum.attr import IntegratedGradients, GradientShap, FeaturePermutation, FeatureAblation, Saliency
+from captum.attr import IntegratedGradients, GradientShap, FeaturePermutation, FeatureAblation, Occlusion
 
 
 concept_to_class = {
@@ -38,14 +38,19 @@ def train_ecg_model(
     model_dir = model_dir / model_name
     if not model_dir.exists():
         os.makedirs(model_dir)
-    models = [AllCNN(latent_dim, f'{model_name}_allcnn'), StandardCNN(latent_dim, f'{model_name}_standard')]
+    models = {'All-CNN': AllCNN(latent_dim, f'{model_name}_allcnn'),
+              'Standard-CNN': StandardCNN(latent_dim, f'{model_name}_standard'),
+              'Augmented-CNN': StandardCNN(latent_dim, f'{model_name}_augmented')}
     train_set = ECGDataset(data_dir, train=True, balance_dataset=True)
     test_set = ECGDataset(data_dir, train=False, balance_dataset=False)
     train_loader = DataLoader(train_set, batch_size, shuffle=True)
     test_loader = DataLoader(test_set, batch_size, shuffle=True)
-    for model in models:
-        logging.info(f'Now fitting a {model.name} classifier')
-        model.fit(device, train_loader, test_loader, model_dir)
+    for model_type in models:
+        logging.info(f'Now fitting a {model_type} classifier')
+        if model_type == 'Augmented-CNN':
+            models[model_type].fit(device, train_loader, test_loader, model_dir, augmentation=True)
+        else:
+            models[model_type].fit(device, train_loader, test_loader, model_dir, augmentation=False)
 
 
 def feature_importance(
@@ -62,13 +67,15 @@ def feature_importance(
     set_random_seed(random_seed)
     test_set = ECGDataset(data_dir, train=False, balance_dataset=False)
     test_loader = DataLoader(test_set, batch_size, shuffle=True)
-    models = {'All Convolutional': AllCNN(latent_dim, f'{model_name}_allcnn'),
-              'Standard': StandardCNN(latent_dim, f'{model_name}_standard')}
-    attr_methods = {'Integrated Gradients': IntegratedGradients,
-                    'GradientShap': GradientShap,
-                    'Saliency': Saliency,
-                    'Feature Permutation': FeaturePermutation,
-                    'Feature Ablation': FeatureAblation
+    models = {'All-CNN': AllCNN(latent_dim, f'{model_name}_allcnn'),
+              'Standard-CNN': StandardCNN(latent_dim, f'{model_name}_standard'),
+              'Augmented-CNN': StandardCNN(latent_dim, f'{model_name}_augmented'),
+              'Random-CNN': StandardCNN(latent_dim)}
+    attr_methods = {'IG': IntegratedGradients,
+                    'GS': GradientShap,
+                    'FP': FeaturePermutation,
+                    'FA': FeatureAblation,
+                    'FO': Occlusion
                     }
     model_dir = model_dir/model_name
     translation = Translation1D()
@@ -76,7 +83,8 @@ def feature_importance(
     for model_type, attr_name in product(models, attr_methods):
         logging.info(f'Now working with classifier = {model_type} and explainer = {attr_name}')
         model = models[model_type]
-        model.load_state_dict(torch.load(model_dir/f"{model.name}.pt"), strict=False)
+        if model_type != 'Random-CNN':
+            model.load_state_dict(torch.load(model_dir/f"{model.name}.pt"), strict=False)
         model.to(device)
         model.eval()
         feat_importance = FeatureImportance(attr_methods[attr_name](model))

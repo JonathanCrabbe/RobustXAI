@@ -29,6 +29,7 @@ class ClassifierECG(ABC, nn.Module):
         device: torch.device,
         dataloader: torch.utils.data.DataLoader,
         optimizer: torch.optim.Optimizer,
+        augmentation: bool
     ) -> np.ndarray:
         """
         One epoch of the training loop
@@ -45,8 +46,9 @@ class ClassifierECG(ABC, nn.Module):
         train_bar = tqdm(dataloader, unit="batch", leave=False)
         for series_batch, label_batch in train_bar:
             T = series_batch.shape[-1]
-            transl = Translation1D(randint(0, T))
-            series_batch = transl(series_batch)
+            if augmentation:
+                transl = Translation1D(randint(0, T))
+                series_batch = transl(series_batch)
             series_batch = series_batch.to(device)
             label_batch = label_batch.to(device)
             pred_batch = self.forward(series_batch)
@@ -99,6 +101,7 @@ class ClassifierECG(ABC, nn.Module):
         n_epoch: int = 500,
         patience: int = 50,
         checkpoint_interval: int = -1,
+        augmentation: bool = True
     ) -> None:
         """
         Fit the classifier on the training set
@@ -111,14 +114,14 @@ class ClassifierECG(ABC, nn.Module):
             n_epoch: maximum number of epochs
             patience: optimizer patience
             checkpoint_interval: number of epochs between each save
-        Returns:
+            augmentation: True if one wants to augment the data with translations
         """
         self.to(device)
         optim = torch.optim.Adam(self.parameters(), lr=lr, weight_decay=1e-05)
         waiting_epoch = 0
         best_test_acc = 0.0
         for epoch in range(n_epoch):
-            train_loss = self.train_epoch(device, train_loader, optim)
+            train_loss = self.train_epoch(device, train_loader, optim, augmentation)
             test_loss, test_acc = self.test_epoch(device, test_loader)
             logging.info(
                 f"Epoch {epoch + 1}/{n_epoch} \t "
