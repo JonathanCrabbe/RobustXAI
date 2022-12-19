@@ -24,6 +24,10 @@ class ClassifierECG(ABC, nn.Module):
     def forward(self, x):
         ...
 
+    @abstractmethod
+    def representation(self, x):
+        ...
+
     def train_epoch(
         self,
         device: torch.device,
@@ -225,7 +229,7 @@ class StandardCNN(ClassifierECG):
         x = self.out(x)
         return x
 
-    def input_to_representation(self, x):
+    def representation(self, x):
         x = self.cnn1(x)
         x = self.maxpool1(x)
         x = self.cnn2(x)
@@ -255,7 +259,7 @@ class AllCNN(ClassifierECG):
         x = torch.mean(x, dim=-1)
         return x
 
-    def input_to_representation(self, x):
+    def representation(self, x):
         return F.relu(self.cnn1(x))
 
     def representation_to_output(self, h):

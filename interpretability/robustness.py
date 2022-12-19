@@ -20,8 +20,8 @@ def cos_similarity(x1: torch.Tensor, x2: torch.Tensor, reduce: bool = False) -> 
     return s
 
 
-def invariance(function: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
-               similarity: callable = cos_similarity, N_samp: int = 50) -> torch.Tensor:
+def model_invariance(function: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
+                     similarity: callable = cos_similarity, N_samp: int = 50) -> torch.Tensor:
     invariance_scores = torch.zeros(len(data_loader.dataset))
     batch_size = data_loader.batch_size
     for _ in tqdm(range(N_samp), leave=False, unit='MC sample'):
@@ -34,8 +34,22 @@ def invariance(function: nn.Module, symmetry: Symmetry, data_loader: DataLoader,
     return invariance_scores / N_samp
 
 
-def equivariance(function: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
-                 similarity: callable = cos_similarity, N_samp: int = 50) -> torch.Tensor:
+def explanation_invariance(function: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
+                           similarity: callable = cos_similarity, N_samp: int = 50) -> torch.Tensor:
+    invariance_scores = torch.zeros(len(data_loader.dataset))
+    batch_size = data_loader.batch_size
+    for _ in tqdm(range(N_samp), leave=False, unit='MC sample'):
+        for batch_idx, (x, y) in enumerate(data_loader):
+            x = x.to(device)
+            e1 = function(x, y)
+            symmetry.sample_symmetry(x)
+            e2 = function(symmetry(x), y)
+            invariance_scores[batch_size*batch_idx:batch_size*batch_idx+len(x)] += similarity(e1, e2).detach().cpu()
+    return invariance_scores / N_samp
+
+
+def explanation_equivariance(function: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
+                             similarity: callable = cos_similarity, N_samp: int = 50) -> torch.Tensor:
     equivariance_scores = torch.zeros(len(data_loader.dataset))
     batch_size = data_loader.batch_size
     for _ in tqdm(range(N_samp), leave=False, unit='MC sample'):
@@ -43,8 +57,8 @@ def equivariance(function: nn.Module, symmetry: Symmetry, data_loader: DataLoade
             x = x.to(device)
             y = y.to(device)
             symmetry.sample_symmetry(x)
-            x1 = symmetry(function(x, y))
-            x2 = function(symmetry(x), y)
-            equivariance_scores[batch_size*batch_idx:batch_size*batch_idx+len(x)] += similarity(x1, x2).detach().cpu()
+            e1 = symmetry(function(x, y))
+            e2 = function(symmetry(x), y)
+            equivariance_scores[batch_size*batch_idx:batch_size*batch_idx+len(x)] += similarity(e1, e2).detach().cpu()
     return equivariance_scores / N_samp
 

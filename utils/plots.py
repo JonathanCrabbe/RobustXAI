@@ -10,7 +10,7 @@ sns.set_style("whitegrid")
 sns.set_palette('colorblind')
 
 
-def robustness_plots(plot_dir: Path, dataset: str) -> None:
+def robustness_plots(plot_dir: Path, dataset: str, experiment_name: str) -> None:
     metrics_df = pd.read_csv(plot_dir/'metrics.csv')
     for model_type in metrics_df['Model Type'].unique():
         sub_df = metrics_df[metrics_df['Model Type'] == model_type]
@@ -18,11 +18,11 @@ def robustness_plots(plot_dir: Path, dataset: str) -> None:
         ax = sns.boxplot(sub_df, x='Explanation', y=y, showfliers=False)
         wrap_labels(ax, 10)
         plt.tight_layout()
-        plt.savefig(plot_dir/f'{dataset}_{model_type.lower().replace(" ", "_")}.pdf')
+        plt.savefig(plot_dir/f'{experiment_name}_{dataset}_{model_type.lower().replace(" ", "_")}.pdf')
         plt.close()
 
 
-def relaxing_invariance_plots(plot_dir: Path, dataset: str) -> None:
+def relaxing_invariance_plots(plot_dir: Path, dataset: str, experiment_name: str) -> None:
     metrics_df = pd.read_csv(plot_dir/'metrics.csv')
     y = 'Explanation Equivariance' if 'Explanation Equivariance' in metrics_df.columns else 'Explanation Invariance'
     plot_df = metrics_df.groupby(['Model Type', 'Explanation']).mean()
@@ -33,10 +33,26 @@ def relaxing_invariance_plots(plot_dir: Path, dataset: str) -> None:
                  xerr=plot_df['Model Invariance CI'], yerr=plot_df[f'{y} CI'],
                  ecolor='k', linestyle='')
     plt.xscale('linear')
-    plt.axline((0, 0), slope=1, color="black", linestyle=(0, (5, 5)))
+    plt.axline((0, 0), slope=1, color="gray", linestyle='dotted')
     plt.tight_layout()
-    plt.savefig(plot_dir/f'{dataset}_relaxing_invariance.pdf')
+    plt.savefig(plot_dir/f'{experiment_name}_{dataset}_relaxing_invariance.pdf')
     plt.close()
+
+
+def understanding_randomness_plots(plot_dir: Path, dataset: str) -> None:
+    data_df = pd.read_csv(plot_dir / 'data.csv')
+    sub_df = data_df[data_df['Baseline'] == False]
+    print(sub_df)
+    sns.kdeplot(data=data_df, x='y1', y='y2', hue='Model Type', fill=True)
+    for model_type in data_df['Model Type'].unique():
+        baseline = data_df[(data_df['Model Type'] == model_type) & (data_df['Baseline'] == True)]
+        plt.plot(baseline['y1'], baseline['y2'], marker="x", linewidth=0, label=f'Baseline {model_type}')
+    plt.axhline(0, color='black')
+    plt.axvline(0, color='black')
+    plt.xlabel(r'$y_1$')
+    plt.ylabel(r'$y_2$')
+    plt.legend()
+    plt.show()
 
 
 def wrap_labels(ax, width, break_long_words=False, do_y: bool = False) -> None:
@@ -67,17 +83,18 @@ def wrap_labels(ax, width, break_long_words=False, do_y: bool = False) -> None:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
-    parser.add_argument("--name", type=str, default="relax_invariance")
+    parser.add_argument("--experiment_name", type=str, default="feature_importance")
+    parser.add_argument("--plot_name", type=str, default="relax_invariance")
     parser.add_argument("--dataset", type=str, default="ecg")
     parser.add_argument("--model", type=str, default="cnn32_seed42")
     parser.add_argument("--concept", type=str, default=None)
     args = parser.parse_args()
-    plot_path = Path.cwd()/f"results/{args.dataset}/{args.model}"
-    logging.info(f"Saving {args.name} plot for {args.dataset} in {str(plot_path)}")
-    match args.name:
+    plot_path = Path.cwd()/f"results/{args.dataset}/{args.model}/{args.experiment_name}"
+    logging.info(f"Saving {args.plot_name} plot for {args.dataset} in {str(plot_path)}")
+    match args.plot_name:
         case 'robustness':
-            robustness_plots(plot_path, args.dataset)
+            robustness_plots(plot_path, args.dataset, args.experiment_name)
         case 'relax_invariance':
-            relaxing_invariance_plots(plot_path, args.dataset)
+            relaxing_invariance_plots(plot_path, args.dataset, args.experiment_name)
         case other:
             raise ValueError("Unknown plot name")

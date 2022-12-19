@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import os
 import logging
@@ -9,11 +10,13 @@ from datasets.loaders import ECGDataset
 from models.time_series import AllCNN, StandardCNN
 from utils.symmetries import Translation1D
 from utils.misc import set_random_seed
-from utils.plots import robustness_plots, relaxing_invariance_plots
+from utils.plots import robustness_plots, relaxing_invariance_plots, understanding_randomness_plots
 from itertools import product
-from interpretability.robustness import invariance, equivariance
+from interpretability.robustness import model_invariance, explanation_equivariance, explanation_invariance
+from interpretability.example import SimplEx, RepresentationSimilarity
 from interpretability.feature import FeatureImportance
 from captum.attr import IntegratedGradients, GradientShap, FeaturePermutation, FeatureAblation, Occlusion
+from sklearn.metrics import mean_absolute_error
 
 
 concept_to_class = {
@@ -69,15 +72,18 @@ def feature_importance(
     test_loader = DataLoader(test_set, batch_size, shuffle=True)
     models = {'All-CNN': AllCNN(latent_dim, f'{model_name}_allcnn'),
               'Standard-CNN': StandardCNN(latent_dim, f'{model_name}_standard'),
-              'Augmented-CNN': StandardCNN(latent_dim, f'{model_name}_augmented'),
-              'Random-CNN': StandardCNN(latent_dim)}
-    attr_methods = {'IG': IntegratedGradients,
-                    'GS': GradientShap,
-                    'FP': FeaturePermutation,
-                    'FA': FeatureAblation,
-                    'FO': Occlusion
+              'Augmented-CNN': StandardCNN(latent_dim, f'{model_name}_augmented')
+              }
+    attr_methods = {'Integrated Gradients': IntegratedGradients,
+                    'Gradient Shap': GradientShap,
+                    'Feature Permutation': FeaturePermutation,
+                    'Feature Ablation': FeatureAblation,
+                    'Feature Occlusion': Occlusion
                     }
     model_dir = model_dir/model_name
+    save_dir = model_dir/'feature_importance'
+    if not save_dir.exists():
+        os.makedirs(save_dir)
     translation = Translation1D()
     metrics = []
     for model_type, attr_name in product(models, attr_methods):
@@ -88,18 +94,109 @@ def feature_importance(
         model.to(device)
         model.eval()
         feat_importance = FeatureImportance(attr_methods[attr_name](model))
-        model_invariance = invariance(model, translation, test_loader, device, N_samp=1)
-        explanation_equivariance = equivariance(feat_importance, translation, test_loader, device, N_samp=1)
-        for inv, equiv in zip(model_invariance, explanation_equivariance):
+        model_inv = model_invariance(model, translation, test_loader, device, N_samp=1)
+        explanation_equiv = explanation_equivariance(feat_importance, translation, test_loader, device, N_samp=1)
+        for inv, equiv in zip(model_inv, explanation_equiv):
             metrics.append([model_type, attr_name, inv.item(), equiv.item()])
-        logging.info(f'Model invariance: {torch.mean(model_invariance):.3g}')
-        logging.info(f'Explanation equivariance: {torch.mean(explanation_equivariance):.3g}')
+        logging.info(f'Model invariance: {torch.mean(model_inv):.3g}')
+        logging.info(f'Explanation equivariance: {torch.mean(explanation_equiv):.3g}')
     metrics_df = pd.DataFrame(data=metrics,
                               columns=['Model Type', 'Explanation', 'Model Invariance', 'Explanation Equivariance'])
-    metrics_df.to_csv(model_dir/'metrics.csv', index=False)
+    metrics_df.to_csv(save_dir/'metrics.csv', index=False)
     if plot:
-        robustness_plots(model_dir, 'ecg')
-        relaxing_invariance_plots(model_dir, 'ecg')
+        robustness_plots(save_dir, 'ecg', 'feature_importance')
+        relaxing_invariance_plots(save_dir, 'ecg', 'feature_importance')
+
+
+def example_importance(
+    random_seed: int,
+    latent_dim: int,
+    batch_size: int,
+    plot: bool,
+    model_name: str = "model",
+    model_dir: Path = Path.cwd() / f"results/ecg/",
+    data_dir: Path = Path.cwd() / "datasets/ecg",
+) -> None:
+
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    set_random_seed(random_seed)
+    train_set = ECGDataset(data_dir, train=False, balance_dataset=False)
+    train_loader = DataLoader(train_set, 100, shuffle=True)
+    X_train = next(iter(train_loader))[0].to(device)
+    test_set = ECGDataset(data_dir, train=False, balance_dataset=False)
+    test_loader = DataLoader(test_set, batch_size, shuffle=True)
+    models = {'All-CNN': AllCNN(latent_dim, f'{model_name}_allcnn'),
+              'Standard-CNN': StandardCNN(latent_dim, f'{model_name}_standard'),
+              'Augmented-CNN': StandardCNN(latent_dim, f'{model_name}_augmented'),
+              }
+    attr_methods = {'SimplEx': SimplEx,
+                    'Representation Similarity': RepresentationSimilarity
+                    }
+    model_dir = model_dir/model_name
+    save_dir = model_dir/'example_importance'
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+    translation = Translation1D()
+    metrics = []
+    for model_type, attr_name in product(models, attr_methods):
+        logging.info(f'Now working with classifier = {model_type} and explainer = {attr_name}')
+        model = models[model_type]
+        if model_type != 'Random-CNN':
+            model.load_state_dict(torch.load(model_dir/f"{model.name}.pt"), strict=False)
+        model.to(device)
+        model.eval()
+        ex_importance = attr_methods[attr_name](model, X_train)
+        model_inv = model_invariance(model, translation, test_loader, device, N_samp=1)
+        explanation_inv = explanation_invariance(ex_importance, translation, test_loader, device, N_samp=1)
+        for inv_model, inv_expl in zip(model_inv, explanation_inv):
+            metrics.append([model_type, attr_name, inv_model.item(), inv_expl.item()])
+        logging.info(f'Model invariance: {torch.mean(model_inv):.3g}')
+        logging.info(f'Explanation invariance: {torch.mean(explanation_inv):.3g}')
+    metrics_df = pd.DataFrame(data=metrics,
+                              columns=['Model Type', 'Explanation', 'Model Invariance', 'Explanation Invariance'])
+    metrics_df.to_csv(save_dir/'metrics.csv', index=False)
+    if plot:
+        robustness_plots(save_dir, 'ecg', 'example_importance')
+        relaxing_invariance_plots(save_dir, 'ecg', 'example_importance')
+
+
+def understand_randomness(
+        random_seed: int,
+        latent_dim: int,
+        batch_size: int,
+        plot: bool,
+        model_name: str,
+        model_dir: Path = Path.cwd() / f"results/ecg/",
+        data_dir: Path = Path.cwd() / "datasets/ecg",
+) -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    set_random_seed(random_seed)
+    test_set = ECGDataset(data_dir, train=False, balance_dataset=False)
+    test_loader = DataLoader(test_set, batch_size, shuffle=True)
+    models = {'All-CNN': AllCNN(latent_dim, f'{model_name}_allcnn'),
+              'Random-CNN': StandardCNN(latent_dim)}
+    model_dir = model_dir / model_name
+    save_dir = model_dir / 'understand_randomness'
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+    model = AllCNN(latent_dim).to(device)
+    model.load_state_dict(torch.load(model_dir / f"{model_name}_allcnn.pt"), strict=False)
+    for model_type in models:
+        predictions = []
+        model = models[model_type]
+        if model_type != 'Random-CNN':
+            model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
+        model.to(device)
+        model.eval()
+        for x, y in test_loader:
+            x = x.to(device)
+            y = y.to(device)
+            predictions.append(model(x).detach().cpu().numpy())
+            T = x.shape[-1]
+        predictions = np.concatenate(predictions)
+        baseline = model(torch.zeros((1, 1, T), device=device)).detach().cpu().numpy()  # Record baseline prediction
+        baseline = np.tile(baseline, [len(predictions), 1])
+        logging.info(f'{model_type}: {mean_absolute_error(predictions, baseline):.3g}')
 
 
 if __name__ == "__main__":
@@ -118,5 +215,9 @@ if __name__ == "__main__":
     match args.name:
         case 'feature_importance':
             feature_importance(args.seed, args.latent_dim, args.batch_size, args.plot, model_name)
+        case 'example_importance':
+            example_importance(args.seed, args.latent_dim, args.batch_size, args.plot, model_name)
+        case 'understand_randomness':
+            understand_randomness(args.seed, args.latent_dim, args.batch_size, args.plot, model_name)
         case other:
             raise ValueError('Unrecognized experiment name.')
