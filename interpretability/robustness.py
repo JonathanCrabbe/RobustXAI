@@ -41,6 +41,7 @@ def explanation_invariance(function: nn.Module, symmetry: Symmetry, data_loader:
     for _ in tqdm(range(N_samp), leave=False, unit='MC sample'):
         for batch_idx, (x, y) in enumerate(data_loader):
             x = x.to(device)
+            y = y.to(device)
             e1 = function(x, y)
             symmetry.sample_symmetry(x)
             e2 = function(symmetry(x), y)

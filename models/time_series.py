@@ -28,6 +28,10 @@ class ClassifierECG(ABC, nn.Module):
     def representation(self, x):
         ...
 
+    @abstractmethod
+    def last_linear_layer(self) -> nn.Module or None:
+        ...
+
     def train_epoch(
         self,
         device: torch.device,
@@ -148,11 +152,9 @@ class ClassifierECG(ABC, nn.Module):
             if checkpoint_interval > 0 and epoch % checkpoint_interval == 0:
                 n_checkpoint = 1 + epoch // checkpoint_interval
                 logging.info(f"Saving checkpoint {n_checkpoint} in {save_dir}")
-                path_to_checkpoint = (
-                    save_dir / f"{self.name}_checkpoint{n_checkpoint}.pt"
-                )
+                path_to_checkpoint = save_dir / f"{self.name}_checkpoint{n_checkpoint}.pt"
+                self.checkpoints_files.append(str(path_to_checkpoint))
                 torch.save(self.state_dict(), path_to_checkpoint)
-                self.checkpoints_files.append(path_to_checkpoint)
             if waiting_epoch == patience:
                 logging.info(f"Early stopping activated")
                 break
@@ -181,6 +183,8 @@ class ClassifierECG(ABC, nn.Module):
 
         with open(path_to_metadata) as metadata_file:
             metadata = json.load(metadata_file)
+        self.latent_dim = metadata['latent_dim']
+        self.checkpoints_files = metadata['checkpoint_files']
         return metadata
 
     def save_metadata(self, directory: pathlib.Path, **kwargs) -> None:
@@ -245,6 +249,9 @@ class StandardCNN(ClassifierECG):
         h = self.out(h)
         return h
 
+    def last_linear_layer(self) -> nn.Module or None:
+        return self.out
+
 
 class AllCNN(ClassifierECG):
     def __init__(self, latent_dim: int, name: str = "model"):
@@ -265,6 +272,9 @@ class AllCNN(ClassifierECG):
     def representation_to_output(self, h):
         h = torch.mean(self.cnn2(h), dim=-1)
         return h
+
+    def last_linear_layer(self) -> nn.Module or None:
+        return self.cnn2
 
 
 

@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn as nn
 import os
 import logging
 import argparse
@@ -13,7 +14,7 @@ from utils.misc import set_random_seed
 from utils.plots import robustness_plots, relaxing_invariance_plots, understanding_randomness_plots
 from itertools import product
 from interpretability.robustness import model_invariance, explanation_equivariance, explanation_invariance
-from interpretability.example import SimplEx, RepresentationSimilarity
+from interpretability.example import SimplEx, RepresentationSimilarity, TracIN
 from interpretability.feature import FeatureImportance
 from captum.attr import IntegratedGradients, GradientShap, FeaturePermutation, FeatureAblation, Occlusion
 from sklearn.metrics import mean_absolute_error
@@ -51,9 +52,9 @@ def train_ecg_model(
     for model_type in models:
         logging.info(f'Now fitting a {model_type} classifier')
         if model_type == 'Augmented-CNN':
-            models[model_type].fit(device, train_loader, test_loader, model_dir, augmentation=True)
+            models[model_type].fit(device, train_loader, test_loader, model_dir, augmentation=True, checkpoint_interval=10)
         else:
-            models[model_type].fit(device, train_loader, test_loader, model_dir, augmentation=False)
+            models[model_type].fit(device, train_loader, test_loader, model_dir, augmentation=False, checkpoint_interval=10)
 
 
 def feature_importance(
@@ -122,15 +123,18 @@ def example_importance(
     set_random_seed(random_seed)
     train_set = ECGDataset(data_dir, train=False, balance_dataset=False)
     train_loader = DataLoader(train_set, 100, shuffle=True)
-    X_train = next(iter(train_loader))[0].to(device)
+    X_train, Y_train = next(iter(train_loader))
+    X_train = X_train.to(device)
+    Y_train = Y_train.to(device)
     test_set = ECGDataset(data_dir, train=False, balance_dataset=False)
     test_loader = DataLoader(test_set, batch_size, shuffle=True)
     models = {'All-CNN': AllCNN(latent_dim, f'{model_name}_allcnn'),
               'Standard-CNN': StandardCNN(latent_dim, f'{model_name}_standard'),
               'Augmented-CNN': StandardCNN(latent_dim, f'{model_name}_augmented'),
               }
-    attr_methods = {'SimplEx': SimplEx,
-                    'Representation Similarity': RepresentationSimilarity
+    attr_methods = {'TracIn': TracIN,
+                    'SimplEx': SimplEx,
+                    'Representation Similarity': RepresentationSimilarity,
                     }
     model_dir = model_dir/model_name
     save_dir = model_dir/'example_importance'
@@ -142,10 +146,15 @@ def example_importance(
         logging.info(f'Now working with classifier = {model_type} and explainer = {attr_name}')
         model = models[model_type]
         if model_type != 'Random-CNN':
+            model.load_metadata(model_dir)
             model.load_state_dict(torch.load(model_dir/f"{model.name}.pt"), strict=False)
         model.to(device)
         model.eval()
-        ex_importance = attr_methods[attr_name](model, X_train)
+        if attr_name == 'TracIn':
+            ex_importance = attr_methods[attr_name](model, X_train, Y_train, nn.CrossEntropyLoss(reduction='none'),
+                                                    batch_size=batch_size)
+        else:
+            ex_importance = attr_methods[attr_name](model, X_train)
         model_inv = model_invariance(model, translation, test_loader, device, N_samp=1)
         explanation_inv = explanation_invariance(ex_importance, translation, test_loader, device, N_samp=1)
         for inv_model, inv_expl in zip(model_inv, explanation_inv):
