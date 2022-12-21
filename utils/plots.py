@@ -32,7 +32,7 @@ def relaxing_invariance_plots(plot_dir: Path, dataset: str, experiment_name: str
                          style='Explanation',  markers=markers[:metrics_df['Explanation'].nunique()])
     plt.errorbar(x=plot_df['Model Invariance'], y=plot_df[y],
                  xerr=plot_df['Model Invariance CI'], yerr=plot_df[f'{y} CI'],
-                 ecolor='k', linestyle='')
+                 ecolor='black', elinewidth=.7, linestyle='', capsize=.7, capthick=.7)
     plt.xscale('linear')
     plt.axline((0, 0), slope=1, color="gray", linestyle='dotted')
     plt.tight_layout()
