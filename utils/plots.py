@@ -8,6 +8,7 @@ from pathlib import Path
 
 sns.set_style("whitegrid")
 sns.set_palette('colorblind')
+markers = ["o", "s", "X", "D", "v"]
 
 
 def robustness_plots(plot_dir: Path, dataset: str, experiment_name: str) -> None:
@@ -27,8 +28,8 @@ def relaxing_invariance_plots(plot_dir: Path, dataset: str, experiment_name: str
     y = 'Explanation Equivariance' if 'Explanation Equivariance' in metrics_df.columns else 'Explanation Invariance'
     plot_df = metrics_df.groupby(['Model Type', 'Explanation']).mean()
     plot_df[['Model Invariance CI', f'{y} CI']] = 2 * metrics_df.groupby(['Model Type', 'Explanation']).sem()
-    ax = sns.scatterplot(plot_df, x='Model Invariance', y=y, hue='Model Type',
-                         style='Explanation',  markers=['o', 'v', 's', '*', 'd'])
+    sns.scatterplot(plot_df, x='Model Invariance', y=y, hue='Model Type',
+                         style='Explanation',  markers=markers[:metrics_df['Explanation'].nunique()])
     plt.errorbar(x=plot_df['Model Invariance'], y=plot_df[y],
                  xerr=plot_df['Model Invariance CI'], yerr=plot_df[f'{y} CI'],
                  ecolor='k', linestyle='')

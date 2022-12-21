@@ -1,9 +1,11 @@
+import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from abc import ABC, abstractmethod
 from captum.influence import TracInCP, TracInCPFast
 from torch.utils.data import TensorDataset, DataLoader
+from pathlib import Path
 
 
 class ExampleBasedExplainer(nn.Module, ABC):
@@ -61,7 +63,7 @@ class TracIN(ExampleBasedExplainer):
                  loss_function: callable, batch_size: int = 1):
         super().__init__(model, X_train)
         train_subset = TensorDataset(X_train, Y_train)
-        last_layer = model.last_linear_layer()
+        last_layer = model.last_layer()
         if last_layer:
             loss_function.reduction = 'sum'
             self.explainer = TracInCPFast(model, last_layer, train_subset, model.checkpoints_files,
@@ -76,40 +78,56 @@ class TracIN(ExampleBasedExplainer):
 
 class InfluenceFunctions(ExampleBasedExplainer):
     def __init__(self, model: nn.Module,  X_train: torch.Tensor,  Y_train: torch.Tensor, train_loader: DataLoader,
-                 loss_function: callable, batch_size: int = 1):
+                 loss_function: callable, batch_size: int, save_dir: Path):
         super().__init__(model, X_train)
-        self.last_layer = model.last_linear_layer()
+        self.last_layer = model.last_layer()
         self.train_loader = train_loader
         self.Y_train = Y_train
         self.loss_function = loss_function
         self.batch_size = batch_size
-        self.ihvp = None
+        self.ihvp = False
+        train_subset = TensorDataset(X_train, Y_train)
+        self.subtrain_loader = DataLoader(train_subset, batch_size=1, shuffle=False)
+        self.device = self.X_train.device
+        self.save_dir = save_dir
+        if not save_dir.exists():
+            os.makedirs(save_dir)
 
     def evaluate_ihvp(self, recursion_depth: int = 100,  damp: float = 1e-3, scale: float = 1000,) -> None:
-        losses = [self.loss_function(model(x), y) for x, y in zip(torch.split(self.X_train, 1), torch.split(self.Y_train, 1))]
-        grads = [torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True)[0] for loss in losses]
-        ihvp = [grad.detach().cpu().clone() for grad in grads]
-        train_iter = iter(self.train_loader)
-        for _ in range(recursion_depth):
-            X_sample, Y_sample = next(train_iter)
-            loss_sample = self.loss_function(model(X_sample), Y_sample)
-            ihvp_prev = [ihvp[k].detach().clone() for k in range(len(self.X_train))]
-            hvps_ = [self.hessian_vector_product(loss_sample, self.model, [ihvp_prev[k]]) for k in range(len(self.X_train))]
-            ihvp = [g_ + (1 - damp) * ihvp_ - hvp_ / scale for (g_, ihvp_, hvp_) in zip(grads, ihvp_prev, hvps_)]
-        ihvp = [ihvp[k] / (scale * len(self.train_loader.dataset)) for k in range(len(self.X_train))]   # Rescale Hessian-Vector products
-        ihvp = torch.stack(ihvp, dim=0) #".reshape((len(train_idx), -1))  # Make a tensor (len(train_idx), n_params)
+        for train_idx, (x_train, y_train) in enumerate(self.subtrain_loader):
+            x_train = x_train.to(self.device)
+            loss = self.loss_function(self.model(x_train), y_train)
+            grad = self.direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True))
+            ihvp = grad.detach().clone()
+            train_sampler = iter(self.train_loader)
+            for _ in range(recursion_depth):
+                X_sample, Y_sample = next(train_sampler)
+                X_sample, Y_sample = X_sample.to(self.device), Y_sample.to(self.device)
+                sampled_loss = self.loss_function(self.model(X_sample), Y_sample)
+                ihvp_prev = ihvp.detach().clone()
+                hvp = self.direct_sum(self.hessian_vector_product(sampled_loss, ihvp_prev))
+                ihvp = grad + (1 - damp) * ihvp - hvp / scale
+            ihvp = ihvp / (scale * len(self.train_loader.dataset))  # Rescale Hessian-Vector products
+            torch.save(ihvp.detach().cpu(), self.save_dir / f"train_ihvp{train_idx}.pt")
+        self.ihvp = True
 
     def forward(self, x, y):
         if not self.ihvp:
             self.evaluate_ihvp()
-        losses = [self.loss_function(model(xi), yi) for xi, yi in zip(torch.split(x, 1), torch.split(y, 1))]
-        grads = [torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True)[0] for loss in losses]
-        grads = torch.stack(grads, dim=0)
-        attribution = torch.einsum("ab,cb->ac", grads, self.ihvp)
+        attribution = torch.zeros((len(x), len(self.X_train)))
+        test_subset = TensorDataset(x, y)
+        subtest_loader = DataLoader(test_subset, batch_size=1, shuffle=False)
+        for test_idx, (x_test, y_test) in enumerate(subtest_loader):
+            x_test, y_test = x_test.to(self.device), y_test.to(self.device)
+            test_loss = self.loss_function(self.model(x_test), y_test)
+            test_grad = self.direct_sum(torch.autograd.grad(test_loss, self.last_layer.parameters(), create_graph=True))
+            test_grad = test_grad.detach().cpu()
+            for train_idx in range(len(self.X_train)):
+                ihvp = torch.load(self.save_dir / f"train_ihvp{train_idx}.pt")
+                attribution[test_idx, train_idx] = torch.dot(ihvp, test_grad)
         return attribution
 
-    @staticmethod
-    def hessian_vector_product(loss, model, v):
+    def hessian_vector_product(self, loss: torch.Tensor, v: torch.Tensor):
         """
         Multiplies the Hessians of the loss of a model with respect to its parameters by a vector v.
         Adapted from: https://github.com/kohpangwei/influence-release
@@ -125,18 +143,23 @@ class InfluenceFunctions(ExampleBasedExplainer):
         """
 
         # First backprop
-        first_grads = stack_torch_tensors(
-            torch.autograd.grad(
-                loss, model.encoder.parameters(), retain_graph=True, create_graph=True
-            )
-        )
+        first_grads = self.direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(),retain_graph=True, create_graph=True))
 
         # Elementwise products
         elemwise_products = torch.dot(first_grads.flatten(), v.flatten())
 
         # Second backprop
-        HVP_ = torch.autograd.grad(elemwise_products, model.encoder.parameters())
-
+        HVP_ = torch.autograd.grad(elemwise_products, self.last_layer.parameters())
+        self.model.zero_grad()
         return HVP_
+
+    @staticmethod
+    def direct_sum(input_tensors):
+        """
+        Takes a list of tensors and stacks them into one tensor
+        """
+        unrolled = [tensor.flatten() for tensor in input_tensors]
+        return torch.cat(unrolled)
+
 
 

@@ -6,7 +6,7 @@ import logging
 import argparse
 import pandas as pd
 from pathlib import Path
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler, Subset
 from datasets.loaders import ECGDataset
 from models.time_series import AllCNN, StandardCNN
 from utils.symmetries import Translation1D
@@ -14,7 +14,7 @@ from utils.misc import set_random_seed
 from utils.plots import robustness_plots, relaxing_invariance_plots, understanding_randomness_plots
 from itertools import product
 from interpretability.robustness import model_invariance, explanation_equivariance, explanation_invariance
-from interpretability.example import SimplEx, RepresentationSimilarity, TracIN
+from interpretability.example import SimplEx, RepresentationSimilarity, TracIN, InfluenceFunctions
 from interpretability.feature import FeatureImportance
 from captum.attr import IntegratedGradients, GradientShap, FeaturePermutation, FeatureAblation, Occlusion
 from sklearn.metrics import mean_absolute_error
@@ -117,6 +117,7 @@ def example_importance(
     model_name: str = "model",
     model_dir: Path = Path.cwd() / f"results/ecg/",
     data_dir: Path = Path.cwd() / "datasets/ecg",
+    n_test: int = 1000
 ) -> None:
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -127,12 +128,14 @@ def example_importance(
     X_train = X_train.to(device)
     Y_train = Y_train.to(device)
     test_set = ECGDataset(data_dir, train=False, balance_dataset=False)
-    test_loader = DataLoader(test_set, batch_size, shuffle=True)
+    test_subset = Subset(test_set, torch.randint(low=0, high=len(test_set)-1, size=[n_test]))
+    test_loader = DataLoader(test_subset, batch_size)
     models = {'All-CNN': AllCNN(latent_dim, f'{model_name}_allcnn'),
               'Standard-CNN': StandardCNN(latent_dim, f'{model_name}_standard'),
               'Augmented-CNN': StandardCNN(latent_dim, f'{model_name}_augmented'),
               }
-    attr_methods = {'TracIn': TracIN,
+    attr_methods = {'Influence Functions': InfluenceFunctions,
+                    'TracIn': TracIN,
                     'SimplEx': SimplEx,
                     'Representation Similarity': RepresentationSimilarity,
                     }
@@ -150,12 +153,20 @@ def example_importance(
             model.load_state_dict(torch.load(model_dir/f"{model.name}.pt"), strict=False)
         model.to(device)
         model.eval()
-        if attr_name == 'TracIn':
-            ex_importance = attr_methods[attr_name](model, X_train, Y_train, nn.CrossEntropyLoss(reduction='none'),
-                                                    batch_size=batch_size)
-        else:
-            ex_importance = attr_methods[attr_name](model, X_train)
-        model_inv = model_invariance(model, translation, test_loader, device, N_samp=1)
+        match attr_name:
+            case 'Influence Functions':
+                recursion_depth = 100
+                train_sampler = RandomSampler(train_set, replacement=True, num_samples=recursion_depth * batch_size)
+                train_loader_replacement = DataLoader(train_set, batch_size, sampler=train_sampler)
+                ex_importance = attr_methods[attr_name](model, X_train, Y_train, train_loader_replacement,
+                                                        nn.CrossEntropyLoss(), batch_size,
+                                                        save_dir/'influence_functions'/model.name)
+            case 'TracIn':
+                ex_importance = attr_methods[attr_name](model, X_train, Y_train,
+                                                        nn.CrossEntropyLoss(reduction='none'), batch_size=batch_size)
+            case other:
+                ex_importance = attr_methods[attr_name](model, X_train)
+        model_inv = model_invariance(model, translation, test_loader, device, N_samp=50)
         explanation_inv = explanation_invariance(ex_importance, translation, test_loader, device, N_samp=1)
         for inv_model, inv_expl in zip(model_inv, explanation_inv):
             metrics.append([model_type, attr_name, inv_model.item(), inv_expl.item()])

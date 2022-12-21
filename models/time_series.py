@@ -29,7 +29,7 @@ class ClassifierECG(ABC, nn.Module):
         ...
 
     @abstractmethod
-    def last_linear_layer(self) -> nn.Module or None:
+    def last_layer(self) -> nn.Module or None:
         ...
 
     def train_epoch(
@@ -249,7 +249,7 @@ class StandardCNN(ClassifierECG):
         h = self.out(h)
         return h
 
-    def last_linear_layer(self) -> nn.Module or None:
+    def last_layer(self) -> nn.Module or None:
         return self.out
 
 
@@ -273,7 +273,7 @@ class AllCNN(ClassifierECG):
         h = torch.mean(self.cnn2(h), dim=-1)
         return h
 
-    def last_linear_layer(self) -> nn.Module or None:
+    def last_layer(self) -> nn.Module or None:
         return self.cnn2
 
 

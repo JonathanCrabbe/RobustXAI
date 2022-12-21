@@ -34,7 +34,7 @@ def model_invariance(function: nn.Module, symmetry: Symmetry, data_loader: DataL
     return invariance_scores / N_samp
 
 
-def explanation_invariance(function: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
+def explanation_invariance(explanation: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
                            similarity: callable = cos_similarity, N_samp: int = 50) -> torch.Tensor:
     invariance_scores = torch.zeros(len(data_loader.dataset))
     batch_size = data_loader.batch_size
@@ -42,14 +42,14 @@ def explanation_invariance(function: nn.Module, symmetry: Symmetry, data_loader:
         for batch_idx, (x, y) in enumerate(data_loader):
             x = x.to(device)
             y = y.to(device)
-            e1 = function(x, y)
+            e1 = explanation(x, y)
             symmetry.sample_symmetry(x)
-            e2 = function(symmetry(x), y)
+            e2 = explanation(symmetry(x), y)
             invariance_scores[batch_size*batch_idx:batch_size*batch_idx+len(x)] += similarity(e1, e2).detach().cpu()
     return invariance_scores / N_samp
 
 
-def explanation_equivariance(function: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
+def explanation_equivariance(explanation: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
                              similarity: callable = cos_similarity, N_samp: int = 50) -> torch.Tensor:
     equivariance_scores = torch.zeros(len(data_loader.dataset))
     batch_size = data_loader.batch_size
@@ -58,8 +58,8 @@ def explanation_equivariance(function: nn.Module, symmetry: Symmetry, data_loade
             x = x.to(device)
             y = y.to(device)
             symmetry.sample_symmetry(x)
-            e1 = symmetry(function(x, y))
-            e2 = function(symmetry(x), y)
+            e1 = symmetry(explanation(x, y))
+            e2 = explanation(symmetry(x), y)
             equivariance_scores[batch_size*batch_idx:batch_size*batch_idx+len(x)] += similarity(e1, e2).detach().cpu()
     return equivariance_scores / N_samp
 
