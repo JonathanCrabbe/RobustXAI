@@ -4,7 +4,7 @@ import torch
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, SubsetRandomSampler
 from imblearn.over_sampling import SMOTE
 
 
@@ -46,6 +46,7 @@ class ECGDataset(Dataset):
             y = np.where(y >= 1, 1, 0)
         self.X = torch.tensor(X, dtype=torch.float32).unsqueeze(1)
         self.y = torch.tensor(y, dtype=torch.long)
+        self.binarize_label = binarize_label
 
     def __len__(self):
         return len(self.y)
@@ -59,3 +60,25 @@ class ECGDataset(Dataset):
         kaggle.api.authenticate()
         kaggle.api.dataset_download_files('shayanfazeli/heartbeat', path=self.data_dir, unzip=True)
         logging.info(f"ECG dataset downloaded in {self.data_dir}")
+
+    def generate_concept_dataset(self, concept_id: int, concept_set_size: int) -> tuple:
+        """
+        Return a concept dataset with positive/negatives for ECG
+        Args:
+            random_seed: random seed for reproducibility
+            concept_set_size: size of the positive and negative subset
+        Returns:
+            a concept dataset of the form X (features),C (concept labels)
+        """
+        assert not self.binarize_label
+        mask = self.y == concept_id
+        positive_idx = torch.nonzero(mask).flatten()
+        negative_idx = torch.nonzero(~mask).flatten()
+        positive_loader = torch.utils.data.DataLoader(self, batch_size=concept_set_size, sampler=SubsetRandomSampler(positive_idx))
+        negative_loader = torch.utils.data.DataLoader(self, batch_size=concept_set_size, sampler=SubsetRandomSampler(negative_idx))
+        X_pos, C_pos = next(iter(positive_loader))
+        X_neg, C_neg = next(iter(negative_loader))
+        X = np.concatenate((X_pos.cpu().numpy(), X_neg.cpu().numpy()), 0)
+        C = np.concatenate((np.ones(concept_set_size), np.zeros(concept_set_size)), 0)
+        rand_perm = np.random.permutation(len(X))
+        return X[rand_perm], C[rand_perm]
