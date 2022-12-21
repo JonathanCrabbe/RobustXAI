@@ -20,7 +20,7 @@ class ExampleBasedExplainer(nn.Module, ABC):
 
 
 class SimplEx(ExampleBasedExplainer):
-    def __init__(self, model: nn.Module,  X_train: torch.Tensor):
+    def __init__(self, model: nn.Module,  X_train: torch.Tensor, **kwargs):
         super().__init__(model, X_train)
         self.H_train = self.model.representation(self.X_train).detach().flatten(start_dim=1)
 
@@ -48,19 +48,19 @@ class SimplEx(ExampleBasedExplainer):
 
 
 class RepresentationSimilarity(ExampleBasedExplainer):
-    def __init__(self, model: nn.Module,  X_train: torch.Tensor):
+    def __init__(self, model: nn.Module,  X_train: torch.Tensor, **kwargs):
         super().__init__(model, X_train)
         self.H_train = self.model.representation(self.X_train).detach().flatten(start_dim=1).unsqueeze(0)
 
     def forward(self, x, y) -> torch.Tensor:
-        h_test = self.model.representation(x).detach().flatten(start_dim=1).unsqueeze(1)
-        attribution = F.cosine_similarity(self.H_train, h_test, dim=-1)
+        H = self.model.representation(x).detach().flatten(start_dim=1).unsqueeze(1)
+        attribution = F.cosine_similarity(self.H_train, H, dim=-1)
         return attribution
 
 
 class TracIN(ExampleBasedExplainer):
     def __init__(self, model: nn.Module,  X_train: torch.Tensor,  Y_train: torch.Tensor,
-                 loss_function: callable, batch_size: int = 1):
+                 loss_function: callable, batch_size: int = 1, **kwargs):
         super().__init__(model, X_train)
         train_subset = TensorDataset(X_train, Y_train)
         last_layer = model.last_layer()
@@ -78,7 +78,7 @@ class TracIN(ExampleBasedExplainer):
 
 class InfluenceFunctions(ExampleBasedExplainer):
     def __init__(self, model: nn.Module,  X_train: torch.Tensor,  Y_train: torch.Tensor, train_loader: DataLoader,
-                 loss_function: callable, batch_size: int, save_dir: Path):
+                 loss_function: callable, batch_size: int, save_dir: Path, recursion_depth: int,  **kwargs):
         super().__init__(model, X_train)
         self.last_layer = model.last_layer()
         self.train_loader = train_loader
@@ -90,17 +90,18 @@ class InfluenceFunctions(ExampleBasedExplainer):
         self.subtrain_loader = DataLoader(train_subset, batch_size=1, shuffle=False)
         self.device = self.X_train.device
         self.save_dir = save_dir
+        self.recursion_depth = recursion_depth
         if not save_dir.exists():
             os.makedirs(save_dir)
 
-    def evaluate_ihvp(self, recursion_depth: int = 100,  damp: float = 1e-3, scale: float = 1000,) -> None:
+    def evaluate_ihvp(self,  damp: float = 1e-3, scale: float = 1000,) -> None:
         for train_idx, (x_train, y_train) in enumerate(self.subtrain_loader):
             x_train = x_train.to(self.device)
             loss = self.loss_function(self.model(x_train), y_train)
             grad = self.direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True))
             ihvp = grad.detach().clone()
             train_sampler = iter(self.train_loader)
-            for _ in range(recursion_depth):
+            for _ in range(self.recursion_depth):
                 X_sample, Y_sample = next(train_sampler)
                 X_sample, Y_sample = X_sample.to(self.device), Y_sample.to(self.device)
                 sampled_loss = self.loss_function(self.model(X_sample), Y_sample)

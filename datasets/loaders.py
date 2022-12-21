@@ -9,6 +9,13 @@ from imblearn.over_sampling import SMOTE
 
 
 class ECGDataset(Dataset):
+    concept_to_class = {
+        "Supraventricular": 1,
+        "Premature Ventricular": 2,
+        "Fusion Beats": 3,
+        "Unknown": 4,
+    }
+
     def __init__(self, data_dir: Path, train: bool, balance_dataset: bool,
                  random_seed: int = 42, binarize_label: bool = True):
         """
