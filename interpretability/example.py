@@ -108,7 +108,7 @@ class InfluenceFunctions(ExampleBasedExplainer):
                 ihvp_prev = ihvp.detach().clone()
                 hvp = self.direct_sum(self.hessian_vector_product(sampled_loss, ihvp_prev))
                 ihvp = grad + (1 - damp) * ihvp - hvp / scale
-            ihvp = ihvp / (scale * len(self.train_loader.dataset))  # Rescale Hessian-Vector products
+            #ihvp = ihvp / (scale * len(self.train_loader.dataset))  # Rescale Hessian-Vector products
             torch.save(ihvp.detach().cpu(), self.save_dir / f"train_ihvp{train_idx}.pt")
         self.ihvp = True
 

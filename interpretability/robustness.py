@@ -20,6 +20,13 @@ def cos_similarity(x1: torch.Tensor, x2: torch.Tensor, reduce: bool = False) -> 
     return s
 
 
+def accuracy(x1: torch.Tensor, x2: torch.Tensor, reduce: bool = False) -> torch.Tensor:
+    s = torch.mean(torch.where(x1 == x2, 1., 0.), dim=-1)
+    if reduce:
+        s = torch.mean(s)
+    return s
+
+
 def model_invariance(function: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
                      similarity: callable = cos_similarity, N_samp: int = 50) -> torch.Tensor:
     invariance_scores = torch.zeros(len(data_loader.dataset))

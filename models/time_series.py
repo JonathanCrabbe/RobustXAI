@@ -106,8 +106,8 @@ class ClassifierECG(ABC, nn.Module):
         test_loader: torch.utils.data.DataLoader,
         save_dir: pathlib.Path,
         lr: int = 1e-03,
-        n_epoch: int = 500,
-        patience: int = 50,
+        n_epoch: int = 200,
+        patience: int = 20,
         checkpoint_interval: int = -1,
         augmentation: bool = True
     ) -> None:
@@ -239,15 +239,15 @@ class StandardCNN(ClassifierECG):
         x = self.cnn2(x)
         x = self.maxpool2(x)
         x = self.cnn3(x)
+        return x
+
+    def representation_to_output(self, x):
         x = self.maxpool3(x)
         x = x.view(x.shape[0], -1)
         x = self.fc1(x)
         x = self.leaky_relu(x)
+        x = self.out(x)
         return x
-
-    def representation_to_output(self, h):
-        h = self.out(h)
-        return h
 
     def last_layer(self) -> nn.Module or None:
         return self.out
@@ -256,25 +256,45 @@ class StandardCNN(ClassifierECG):
 class AllCNN(ClassifierECG):
     def __init__(self, latent_dim: int, name: str = "model"):
         super(AllCNN, self).__init__(latent_dim, name)
-        self.cnn1 = nn.Conv1d(1, latent_dim, kernel_size=3, stride=1, padding=1, padding_mode='circular')
-        self.cnn2 = nn.Conv1d(latent_dim, 2, kernel_size=3, stride=1, padding=1, padding_mode='circular')
+        self.cnn1 = nn.Conv1d(1, 16, kernel_size=3, stride=1, padding=1, padding_mode='circular')
+        self.cnn2 = nn.Conv1d(16, 64, kernel_size=3, stride=1, padding=1, padding_mode='circular')
+        self.cnn3 = nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=1, padding_mode='circular')
+        self.cnn4 = nn.Conv1d(128, latent_dim, kernel_size=3, stride=1, padding=1, padding_mode='circular')
+        self.out = nn.Conv1d(latent_dim, 2, kernel_size=3, stride=1, padding=1, padding_mode='circular')
+        #self.cnn1 = nn.Conv1d(1, latent_dim, kernel_size=3, stride=1, padding=1, padding_mode='circular')
+        #self.cnn2 = nn.Conv1d(latent_dim, 2, kernel_size=3, stride=1, padding=1, padding_mode='circular')
 
     def forward(self, x):
         x = self.cnn1(x)
         x = F.relu(x)
         x = self.cnn2(x)
+        x = F.relu(x)
+        x = self.cnn3(x)
+        x = F.relu(x)
+        x = self.cnn4(x)
+        x = F.relu(x)
+        x = self.out(x)
         x = torch.mean(x, dim=-1)
         return x
 
     def representation(self, x):
-        return F.relu(self.cnn1(x))
+        x = self.cnn1(x)
+        x = F.relu(x)
+        x = self.cnn2(x)
+        x = F.relu(x)
+        x = self.cnn3(x)
+        return x
 
-    def representation_to_output(self, h):
-        h = torch.mean(self.cnn2(h), dim=-1)
-        return h
+    def representation_to_output(self, x):
+        x = F.relu(x)
+        x = self.cnn4(x)
+        x = F.relu(x)
+        x = self.out(x)
+        x = torch.mean(x, dim=-1)
+        return x
 
     def last_layer(self) -> nn.Module or None:
-        return self.cnn2
+        return self.out
 
 
 

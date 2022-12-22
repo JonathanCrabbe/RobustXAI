@@ -35,6 +35,8 @@ def relaxing_invariance_plots(plot_dir: Path, dataset: str, experiment_name: str
                  ecolor='black', elinewidth=.7, linestyle='', capsize=.7, capthick=.7)
     plt.xscale('linear')
     plt.axline((0, 0), slope=1, color="gray", linestyle='dotted')
+    plt.xlim(0, 1.1)
+    plt.ylim(0, 1.1)
     plt.tight_layout()
     plt.savefig(plot_dir/f'{experiment_name}_{dataset}_relaxing_invariance.pdf')
     plt.close()

@@ -1,39 +1,34 @@
 import abc
-import numpy as np
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from abc import ABC
 from sklearn.svm import SVC
 from sklearn.linear_model import SGDClassifier
+from datasets.loaders import ConceptDataset
 
 
-class ConceptExplainer(ABC):
+class ConceptExplainer(ABC, nn.Module):
     """
     An abstract class that contains the interface for any post-hoc concept explainer
     """
 
     @abc.abstractmethod
-    def __init__(self, device: torch.device, batch_size: int = 50):
-        self.concept_reps = None
-        self.concept_labels = None
-        self.classifier = None
-        self.device = device
-        self.batch_size = batch_size
+    def __init__(self, model: nn.Module, dataset: ConceptDataset, **kwargs):
+        super(ConceptExplainer, self).__init__()
+        self.model = model
+        self.classifiers = None
+        self.dataset = dataset
 
     @abc.abstractmethod
-    def fit(self, concept_reps: np.ndarray, concept_labels: np.ndarray) -> None:
+    def fit(self, device: torch.device, concept_set_size: int) -> None:
         """
-        Fit the concept classifier to the dataset (latent_reps, concept_labels)
-        Args:
-            concept_reps: latent representations of the examples illustrating the concept
-            concept_labels: labels indicating the presence (1) or absence (0) of the concept
+        Fit a concept classifier for each concept dataset
         """
-        assert concept_reps.shape[0] == concept_labels.shape[0]
-        self.concept_reps = concept_reps
-        self.concept_labels = concept_labels
+        ...
 
     @abc.abstractmethod
-    def predict(self, latent_reps: np.ndarray) -> np.ndarray:
+    def forward(self, x:torch.Tensor, y:torch.Tensor) -> torch.Tensor:
         """
         Predicts the presence or absence of concept importance for the latent representations
         Args:
@@ -41,109 +36,63 @@ class ConceptExplainer(ABC):
         Returns:
             concepts labels indicating the presence (1) or absence (0) of the concept
         """
-
-    def get_concept_reps(self, positive_set: bool) -> np.ndarray:
-        """
-        Get the latent representation of the positive/negative examples
-        Args:
-            positive_set: True returns positive examples, False returns negative examples
-        Returns:
-            Latent representations of the requested set
-        """
-        return self.concept_reps[self.concept_labels == int(positive_set)]
+        ...
 
 
-class CAR(ConceptExplainer, ABC):
-    def __init__(
-        self,
-        device: torch.device,
-        batch_size: int = 100,
-        kernel: str = "rbf",
-        kernel_width: float = None,
-    ):
-        super(CAR, self).__init__(device, batch_size)
+class CAR(ConceptExplainer):
+    def __init__(self, model: nn.Module,  dataset: ConceptDataset, kernel: str = "rbf", **kwargs):
+        super(CAR, self).__init__(model, dataset)
         self.kernel = kernel
-        self.kernel_width = kernel_width
 
-    def fit(self, concept_reps: np.ndarray, concept_labels: np.ndarray) -> None:
-        """
-        Fit the concept classifier to the dataset (latent_reps, concept_labels)
-        Args:
-            concept_reps: latent representations of the examples illustrating the concept
-            concept_labels: labels indicating the presence (1) or absence (0) of the concept
-        """
-        super(CAR, self).fit(concept_reps, concept_labels)
-        classifier = SVC(kernel=self.kernel)
-        classifier.fit(concept_reps, concept_labels)
-        self.classifier = classifier
+    def fit(self, device: torch.device, concept_set_size: int = 100) -> None:
+        classifiers = []
+        for concept_id, concept_name in enumerate(self.dataset.concept_names()):
+            classifier = SVC(kernel=self.kernel)
+            X_train, C_train = self.dataset.generate_concept_dataset(concept_id, concept_set_size)
+            H_train = self.model.representation(X_train.to(device)).flatten(start_dim=1)
+            classifier.fit(H_train.detach().cpu().numpy(), C_train.numpy())
+            classifiers.append(classifier)
+        self.classifiers = classifiers
 
-    def predict(self, latent_reps: np.ndarray) -> np.ndarray:
-        """
-        Predicts the presence or absence of the concept for the latent representations
-        Args:
-            latent_reps: representations of the test examples
-        Returns:
-            concepts labels indicating the presence (1) or absence (0) of the concept
-        """
-        return self.classifier.predict(latent_reps)
+    def forward(self, x: torch.Tensor, y:torch.Tensor) -> torch.Tensor:
+        assert self.classifiers
+        H = (self.model.representation(x)).detach().cpu().flatten(start_dim=1).numpy()
+        C_pred = torch.zeros((len(x), len(self.classifiers)))
+        for concept_id, classifier in enumerate(self.classifiers):
+            #C_pred[:, concept_id] = torch.from_numpy(classifier.decision_function(H))
+            C_pred[:, concept_id] = torch.from_numpy(classifier.predict(H))
+        return C_pred
 
 
-class CAV(ConceptExplainer, ABC):
-    def __init__(self, device: torch.device, batch_size: int = 50):
-        super(CAV, self).__init__(device, batch_size)
+class CAV(ConceptExplainer):
+    def __init__(self, model: nn.Module, dataset: ConceptDataset, n_classes: int, **kwargs):
+        super(CAV, self).__init__(model, dataset)
+        self.n_classes = n_classes
 
-    def fit(self, concept_reps: np.ndarray, concept_labels: np.ndarray) -> None:
-        """
-        Fit the concept classifier to the dataset (latent_reps, concept_labels)
-        Args:
-            kernel: kernel function
-            latent_reps: latent representations of the examples illustrating the concept
-            concept_labels: labels indicating the presence (1) or absence (0) of the concept
-        """
-        super(CAV, self).fit(concept_reps, concept_labels)
-        classifier = SGDClassifier(alpha=0.01, max_iter=1000, tol=1e-3)
-        classifier.fit(concept_reps, concept_labels)
-        self.classifier = classifier
+    def fit(self, device: torch.device, concept_set_size: int = 100) -> None:
+        classifiers = []
+        for concept_id, concept_name in enumerate(self.dataset.concept_names()):
+            classifier = SGDClassifier(alpha=0.01, max_iter=1000, tol=1e-3)
+            X_train, C_train = self.dataset.generate_concept_dataset(concept_id, concept_set_size)
+            H_train = self.model.representation(X_train.to(device)).flatten(start_dim=1)
+            classifier.fit(H_train.detach().cpu().numpy(), C_train.numpy())
+            classifiers.append(classifier)
+        self.classifiers = classifiers
 
-    def predict(self, latent_reps: np.ndarray) -> np.ndarray:
-        """
-        Predicts the presence or absence of the concept for the latent representations
-        Args:
-            latent_reps: representations of the test examples
-        Returns:
-            concepts labels indicating the presence (1) or absence (0) of the concept
-        """
-        return self.classifier.predict(latent_reps)
-
-    def concept_importance(
-        self,
-        latent_reps: np.ndarray,
-        labels: torch.Tensor = None,
-        num_classes: int = None,
-        rep_to_output: callable = None,
-    ) -> np.ndarray:
-        """
-        Predicts the relevance of a concept for the latent representations
-        Args:
-            latent_reps: representations of the test examples
-            labels: the labels associated to the representations one-hot encoded
-            num_classes: the number of classes
-            rep_to_output: black-box mapping the representation space to the output space
-        Returns:
-            concepts scores for each example
-        """
-        one_hot_labels = F.one_hot(labels, num_classes).to(self.device)
-        latent_reps = torch.from_numpy(latent_reps).to(self.device).requires_grad_()
-        outputs = rep_to_output(latent_reps)
-        grads = torch.autograd.grad(outputs, latent_reps, grad_outputs=one_hot_labels)[
-            0
-        ]
-        cav = self.get_activation_vector()
+    def forward(self, x: torch.tensor, y: torch.Tensor) -> torch.Tensor:
+        one_hot_labels = F.one_hot(y, self.n_classes).to(x.device)
+        H = self.model.representation(x).requires_grad_()
+        Y = self.model.representation_to_output(H)
+        grads = torch.autograd.grad(Y, H, grad_outputs=one_hot_labels)[0]
+        cavs = self.get_activation_vectors().to(x.device)
         if len(grads.shape) > 2:
             grads = grads.flatten(start_dim=1)
-        if len(cav.shape) > 2:
-            cav = cav.flatten(start_dim=1)
-        return torch.einsum("bi,bi->b", cav, grads).detach().cpu().numpy()
+        C_sens = torch.einsum("ci,bi->bc", cavs, grads).detach().cpu()
+        return torch.where(C_sens > 0, 1, 0)
 
-    def get_activation_vector(self):
-        return torch.tensor(self.classifier.coef_).to(self.device).float()
+    def get_activation_vectors(self):
+        assert self.classifiers
+        cavs = []
+        for classifier in self.classifiers:
+            cavs.append(torch.tensor(classifier.coef_).float().reshape(1, -1))
+        return torch.cat(cavs, dim=0)

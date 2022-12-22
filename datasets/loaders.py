@@ -6,15 +6,22 @@ import numpy as np
 from pathlib import Path
 from torch.utils.data import Dataset, SubsetRandomSampler
 from imblearn.over_sampling import SMOTE
+from abc import ABC, abstractmethod, abstractproperty
 
 
-class ECGDataset(Dataset):
-    concept_to_class = {
-        "Supraventricular": 1,
-        "Premature Ventricular": 2,
-        "Fusion Beats": 3,
-        "Unknown": 4,
-    }
+class ConceptDataset(ABC, Dataset):
+
+    @property
+    @abstractmethod
+    def concept_names(self):
+        ...
+
+    @abstractmethod
+    def generate_concept_dataset(self, concept_id: int, concept_set_size: int) -> tuple:
+        ...
+
+
+class ECGDataset(ConceptDataset):
 
     def __init__(self, data_dir: Path, train: bool, balance_dataset: bool,
                  random_seed: int = 42, binarize_label: bool = True):
@@ -71,14 +78,17 @@ class ECGDataset(Dataset):
             a concept dataset of the form X (features),C (concept labels)
         """
         assert not self.binarize_label
-        mask = self.y == concept_id
+        mask = self.y == concept_id + 1
         positive_idx = torch.nonzero(mask).flatten()
         negative_idx = torch.nonzero(~mask).flatten()
         positive_loader = torch.utils.data.DataLoader(self, batch_size=concept_set_size, sampler=SubsetRandomSampler(positive_idx))
         negative_loader = torch.utils.data.DataLoader(self, batch_size=concept_set_size, sampler=SubsetRandomSampler(negative_idx))
         X_pos, C_pos = next(iter(positive_loader))
         X_neg, C_neg = next(iter(negative_loader))
-        X = np.concatenate((X_pos.cpu().numpy(), X_neg.cpu().numpy()), 0)
-        C = np.concatenate((np.ones(concept_set_size), np.zeros(concept_set_size)), 0)
-        rand_perm = np.random.permutation(len(X))
+        X = torch.concatenate((X_pos, X_neg), 0)
+        C = torch.concatenate((torch.ones(concept_set_size), torch.zeros(concept_set_size)), 0)
+        rand_perm = torch.randperm(len(X))
         return X[rand_perm], C[rand_perm]
+
+    def concept_names(self):
+        return ["Supraventricular", "Premature Ventricular", "Fusion Beats", "Unknown"]
