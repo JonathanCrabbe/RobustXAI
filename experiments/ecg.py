@@ -125,7 +125,7 @@ def example_importance(
     models = {'All-CNN': AllCNN(latent_dim, f'{model_name}_allcnn'),
               'Standard-CNN': StandardCNN(latent_dim, f'{model_name}_standard'),
               'Augmented-CNN': StandardCNN(latent_dim, f'{model_name}_augmented')}
-    attr_methods = {'Influence Functions': InfluenceFunctions, 'TracIn': TracIN, 'SimplEx': SimplEx,
+    attr_methods = {'TracIn': TracIN, 'Influence Functions': InfluenceFunctions, 'SimplEx': SimplEx,
                     'Representation Similarity': RepresentationSimilarity}
     model_dir = model_dir/model_name
     save_dir = model_dir/'example_importance'
@@ -143,9 +143,10 @@ def example_importance(
         logging.info(f'Model invariance: {torch.mean(model_inv):.3g}')
         for attr_name in attr_methods:
             logging.info(f'Now working with {attr_name} explainer')
+            model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
             ex_importance = attr_methods[attr_name](model, X_train, Y_train=Y_train, train_loader=train_loader_replacement,
                                                     loss_function=nn.CrossEntropyLoss(), batch_size=batch_size,
-                                                    save_dir=save_dir /'influence_functions'/model.name, recursion_depth=recursion_depth)
+                                                    save_dir=save_dir/model.name, recursion_depth=recursion_depth)
             explanation_inv = explanation_invariance(ex_importance, translation, test_loader, device, N_samp=1)
             for inv_model, inv_expl in zip(model_inv, explanation_inv):
                 metrics.append([model_type, attr_name, inv_model.item(), inv_expl.item()])

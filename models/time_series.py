@@ -261,8 +261,6 @@ class AllCNN(ClassifierECG):
         self.cnn3 = nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=1, padding_mode='circular')
         self.cnn4 = nn.Conv1d(128, latent_dim, kernel_size=3, stride=1, padding=1, padding_mode='circular')
         self.out = nn.Conv1d(latent_dim, 2, kernel_size=3, stride=1, padding=1, padding_mode='circular')
-        #self.cnn1 = nn.Conv1d(1, latent_dim, kernel_size=3, stride=1, padding=1, padding_mode='circular')
-        #self.cnn2 = nn.Conv1d(latent_dim, 2, kernel_size=3, stride=1, padding=1, padding_mode='circular')
 
     def forward(self, x):
         x = self.cnn1(x)

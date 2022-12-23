@@ -3,9 +3,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from abc import ABC, abstractmethod
-from captum.influence import TracInCP, TracInCPFast
 from torch.utils.data import TensorDataset, DataLoader
 from pathlib import Path
+from utils.misc import direct_sum
 
 
 class ExampleBasedExplainer(nn.Module, ABC):
@@ -60,45 +60,77 @@ class RepresentationSimilarity(ExampleBasedExplainer):
 
 class TracIN(ExampleBasedExplainer):
     def __init__(self, model: nn.Module,  X_train: torch.Tensor,  Y_train: torch.Tensor,
-                 loss_function: callable, batch_size: int = 1, **kwargs):
+                 loss_function: callable, save_dir: Path, **kwargs):
         super().__init__(model, X_train)
+        self.last_layer = model.last_layer()
+        self.save_dir = save_dir/'tracin'
+        self.loss_function = loss_function
+        self.checkpoints = model.checkpoints_files
+        self.device = X_train.device
         train_subset = TensorDataset(X_train, Y_train)
-        last_layer = model.last_layer()
-        if last_layer:
-            loss_function.reduction = 'sum'
-            self.explainer = TracInCPFast(model, last_layer, train_subset, model.checkpoints_files,
-                                          loss_fn=loss_function, batch_size=batch_size)
-        else:
-            self.explainer = TracInCP(model, train_subset, model.checkpoints_files, loss_fn=loss_function,
-                                      batch_size=batch_size)
+        self.subtrain_loader = DataLoader(train_subset, batch_size=1, shuffle=False)
+        self.train_grads = False
+        if not self.save_dir.exists():
+            os.makedirs(self.save_dir)
 
     def forward(self, x, y):
-        return self.explainer.influence(x, y)
+        if not self.train_grads:
+            self.compute_train_grads()
+        attribution = torch.zeros((len(x), len(self.X_train)))
+        test_subset = TensorDataset(x, y)
+        subtest_loader = DataLoader(test_subset, batch_size=1, shuffle=False)
+        for test_idx, (x_test, y_test) in enumerate(subtest_loader):
+            test_grad = None
+            x_test, y_test = x_test.to(self.device), y_test.to(self.device)
+            for checkpoint in self.checkpoints:
+                self.model.load_state_dict(torch.load(checkpoint), strict=False)
+                test_loss = self.loss_function(self.model(x_test), y_test)
+                if test_grad is not None:
+                    test_grad += direct_sum(torch.autograd.grad(test_loss, self.last_layer.parameters(), create_graph=True))
+                else:
+                    test_grad = direct_sum(torch.autograd.grad(test_loss, self.last_layer.parameters(), create_graph=True))
+            test_grad = test_grad.detach().cpu()
+            for train_idx in range(len(self.X_train)):
+                train_grad = torch.load(self.save_dir/f"train_grad{train_idx}.pt")
+                attribution[test_idx, train_idx] = torch.dot(train_grad, test_grad)
+        return attribution
+
+    def compute_train_grads(self) -> None:
+        for train_idx, (x_train, y_train) in enumerate(self.subtrain_loader):
+            grad = None
+            for checkpoint in self.checkpoints:
+                self.model.load_state_dict(torch.load(checkpoint), strict=False)
+                loss = self.loss_function(self.model(x_train), y_train)
+                if grad is not None:
+                    grad += direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True))
+                else:
+                    grad = direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True))
+            torch.save(grad.detach().cpu(), self.save_dir/f"train_grad{train_idx}.pt")
+        self.train_grads = True
 
 
 class InfluenceFunctions(ExampleBasedExplainer):
     def __init__(self, model: nn.Module,  X_train: torch.Tensor,  Y_train: torch.Tensor, train_loader: DataLoader,
-                 loss_function: callable, batch_size: int, save_dir: Path, recursion_depth: int,  **kwargs):
+                 loss_function: callable, save_dir: Path, recursion_depth: int,  **kwargs):
         super().__init__(model, X_train)
         self.last_layer = model.last_layer()
         self.train_loader = train_loader
         self.Y_train = Y_train
         self.loss_function = loss_function
-        self.batch_size = batch_size
         self.ihvp = False
         train_subset = TensorDataset(X_train, Y_train)
         self.subtrain_loader = DataLoader(train_subset, batch_size=1, shuffle=False)
         self.device = self.X_train.device
-        self.save_dir = save_dir
+        self.save_dir = save_dir/'influence_functions'
         self.recursion_depth = recursion_depth
-        if not save_dir.exists():
-            os.makedirs(save_dir)
+        if not self.save_dir.exists():
+            os.makedirs(self.save_dir)
 
     def evaluate_ihvp(self,  damp: float = 1e-3, scale: float = 1000,) -> None:
         for train_idx, (x_train, y_train) in enumerate(self.subtrain_loader):
             x_train = x_train.to(self.device)
             loss = self.loss_function(self.model(x_train), y_train)
-            grad = self.direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True))
+            grad = direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True))
             ihvp = grad.detach().clone()
             train_sampler = iter(self.train_loader)
             for _ in range(self.recursion_depth):
@@ -106,10 +138,9 @@ class InfluenceFunctions(ExampleBasedExplainer):
                 X_sample, Y_sample = X_sample.to(self.device), Y_sample.to(self.device)
                 sampled_loss = self.loss_function(self.model(X_sample), Y_sample)
                 ihvp_prev = ihvp.detach().clone()
-                hvp = self.direct_sum(self.hessian_vector_product(sampled_loss, ihvp_prev))
+                hvp = direct_sum(self.hessian_vector_product(sampled_loss, ihvp_prev))
                 ihvp = grad + (1 - damp) * ihvp - hvp / scale
-            #ihvp = ihvp / (scale * len(self.train_loader.dataset))  # Rescale Hessian-Vector products
-            torch.save(ihvp.detach().cpu(), self.save_dir / f"train_ihvp{train_idx}.pt")
+            torch.save(ihvp.detach().cpu(), self.save_dir/f"train_ihvp{train_idx}.pt")
         self.ihvp = True
 
     def forward(self, x, y):
@@ -121,10 +152,10 @@ class InfluenceFunctions(ExampleBasedExplainer):
         for test_idx, (x_test, y_test) in enumerate(subtest_loader):
             x_test, y_test = x_test.to(self.device), y_test.to(self.device)
             test_loss = self.loss_function(self.model(x_test), y_test)
-            test_grad = self.direct_sum(torch.autograd.grad(test_loss, self.last_layer.parameters(), create_graph=True))
+            test_grad = direct_sum(torch.autograd.grad(test_loss, self.last_layer.parameters(), create_graph=True))
             test_grad = test_grad.detach().cpu()
             for train_idx in range(len(self.X_train)):
-                ihvp = torch.load(self.save_dir / f"train_ihvp{train_idx}.pt")
+                ihvp = torch.load(self.save_dir/f"train_ihvp{train_idx}.pt")
                 attribution[test_idx, train_idx] = torch.dot(ihvp, test_grad)
         return attribution
 
@@ -144,7 +175,7 @@ class InfluenceFunctions(ExampleBasedExplainer):
         """
 
         # First backprop
-        first_grads = self.direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(),retain_graph=True, create_graph=True))
+        first_grads = direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), retain_graph=True, create_graph=True))
 
         # Elementwise products
         elemwise_products = torch.dot(first_grads.flatten(), v.flatten())
@@ -154,13 +185,6 @@ class InfluenceFunctions(ExampleBasedExplainer):
         self.model.zero_grad()
         return HVP_
 
-    @staticmethod
-    def direct_sum(input_tensors):
-        """
-        Takes a list of tensors and stacks them into one tensor
-        """
-        unrolled = [tensor.flatten() for tensor in input_tensors]
-        return torch.cat(unrolled)
 
 
 
