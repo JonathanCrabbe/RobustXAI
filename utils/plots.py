@@ -42,6 +42,23 @@ def relaxing_invariance_plots(plot_dir: Path, dataset: str, experiment_name: str
     plt.close()
 
 
+def mc_convergence_plot(plot_dir: Path, dataset: str, experiment_name: str) -> None:
+    metrics_df = pd.read_csv(plot_dir/'metrics.csv')
+    for estimator_name in metrics_df['Estimator Name'].unique():
+        metrics_subdf = metrics_df[metrics_df['Estimator Name'] == estimator_name]
+        x = metrics_subdf['Number of MC Samples']
+        y = metrics_subdf['Estimator Value']
+        ci = 2*metrics_subdf['Estimator SEM']
+        plt.plot(x, y, label=estimator_name)
+        plt.fill_between(x, y-ci, y+ci, alpha=0.2)
+    plt.legend()
+    plt.xlabel(r'$N_{\mathrm{samp}}$')
+    plt.ylabel('Monte Carlo Estimator')
+    plt.tight_layout()
+    plt.savefig(plot_dir / f'{experiment_name}_{dataset}.pdf')
+    plt.close()
+
+
 def understanding_randomness_plots(plot_dir: Path, dataset: str) -> None:
     data_df = pd.read_csv(plot_dir / 'data.csv')
     sub_df = data_df[data_df['Baseline'] == False]
@@ -99,5 +116,7 @@ if __name__ == "__main__":
             robustness_plots(plot_path, args.dataset, args.experiment_name)
         case 'relax_invariance':
             relaxing_invariance_plots(plot_path, args.dataset, args.experiment_name)
+        case 'mc_convergence':
+            mc_convergence_plot(plot_path, args.dataset, args.experiment_name)
         case other:
             raise ValueError("Unknown plot name")

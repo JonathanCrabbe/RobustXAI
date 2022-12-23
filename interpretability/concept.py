@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from abc import ABC
 from sklearn.svm import SVC
+from sklearn.decomposition import PCA
 from sklearn.linear_model import SGDClassifier
 from datasets.loaders import ConceptDataset
 
@@ -45,22 +46,27 @@ class CAR(ConceptExplainer):
         self.kernel = kernel
 
     def fit(self, device: torch.device, concept_set_size: int = 100) -> None:
+        encoders = []
         classifiers = []
         for concept_id, concept_name in enumerate(self.dataset.concept_names()):
+            encoder = PCA(100)
             classifier = SVC(kernel=self.kernel)
             X_train, C_train = self.dataset.generate_concept_dataset(concept_id, concept_set_size)
-            H_train = self.model.representation(X_train.to(device)).flatten(start_dim=1)
-            classifier.fit(H_train.detach().cpu().numpy(), C_train.numpy())
+            H_train = self.model.representation(X_train.to(device)).flatten(start_dim=1).detach().cpu().numpy()
+            H_train = encoder.fit_transform(H_train)
+            classifier.fit(H_train, C_train.numpy())
+            encoders.append(encoder)
             classifiers.append(classifier)
+        self.encoders = encoders
         self.classifiers = classifiers
 
     def forward(self, x: torch.Tensor, y:torch.Tensor) -> torch.Tensor:
-        assert self.classifiers
-        H = (self.model.representation(x)).detach().cpu().flatten(start_dim=1).numpy()
+        assert self.classifiers and self.encoders
+        H = self.model.representation(x).flatten(start_dim=1).detach().cpu().numpy()
         C_pred = torch.zeros((len(x), len(self.classifiers)))
-        for concept_id, classifier in enumerate(self.classifiers):
-            #C_pred[:, concept_id] = torch.from_numpy(classifier.decision_function(H))
-            C_pred[:, concept_id] = torch.from_numpy(classifier.predict(H))
+        for concept_id, (encoder, classifier) in enumerate(zip(self.encoders, self.classifiers)):
+            H_proj = encoder.transform(H)
+            C_pred[:, concept_id] = torch.from_numpy(classifier.predict(H_proj))
         return C_pred
 
 

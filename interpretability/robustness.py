@@ -28,45 +28,57 @@ def accuracy(x1: torch.Tensor, x2: torch.Tensor, reduce: bool = False) -> torch.
 
 
 def model_invariance(function: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
-                     similarity: callable = cos_similarity, N_samp: int = 50) -> torch.Tensor:
-    invariance_scores = torch.zeros(len(data_loader.dataset))
-    batch_size = data_loader.batch_size
-    for _ in tqdm(range(N_samp), leave=False, unit='MC sample'):
-        for batch_idx, (x, _) in enumerate(data_loader):
+                     similarity: callable = cos_similarity, N_samp: int = 50, reduce: bool = True) -> torch.Tensor:
+    invariance_scores = torch.zeros(len(data_loader.dataset), N_samp)
+    for sample_id in tqdm(range(N_samp), leave=False, unit='MC sample'):
+        sample_scores = []
+        for x, _ in data_loader:
             x = x.to(device)
             y1 = function(x)
             symmetry.sample_symmetry(x)
             y2 = function(symmetry(x))
-            invariance_scores[batch_size*batch_idx:batch_size*batch_idx+len(x)] += similarity(y1, y2).detach().cpu()
-    return invariance_scores / N_samp
+            sample_scores.append(similarity(y1, y2).detach().cpu())
+        sample_scores = torch.cat(sample_scores)
+        invariance_scores[:, sample_id] = sample_scores
+    if reduce:
+        invariance_scores = torch.mean(invariance_scores, dim=-1)
+    return invariance_scores
 
 
 def explanation_invariance(explanation: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
-                           similarity: callable = cos_similarity, N_samp: int = 50) -> torch.Tensor:
-    invariance_scores = torch.zeros(len(data_loader.dataset))
-    batch_size = data_loader.batch_size
-    for _ in tqdm(range(N_samp), leave=False, unit='MC sample'):
-        for batch_idx, (x, y) in enumerate(data_loader):
+                           similarity: callable = cos_similarity, N_samp: int = 50, reduce: bool = True) -> torch.Tensor:
+    invariance_scores = torch.zeros(len(data_loader.dataset), N_samp)
+    for sample_id in tqdm(range(N_samp), leave=False, unit='MC sample'):
+        sample_scores = []
+        for x, y in data_loader:
             x = x.to(device)
             y = y.to(device)
             e1 = explanation(x, y)
             symmetry.sample_symmetry(x)
             e2 = explanation(symmetry(x), y)
-            invariance_scores[batch_size*batch_idx:batch_size*batch_idx+len(x)] += similarity(e1, e2).detach().cpu()
-    return invariance_scores / N_samp
+            sample_scores.append(similarity(e1, e2).detach().cpu())
+        sample_scores = torch.cat(sample_scores)
+        invariance_scores[:, sample_id] = sample_scores
+    if reduce:
+        invariance_scores = torch.mean(invariance_scores, dim=-1)
+    return invariance_scores
 
 
 def explanation_equivariance(explanation: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
-                             similarity: callable = cos_similarity, N_samp: int = 50) -> torch.Tensor:
-    equivariance_scores = torch.zeros(len(data_loader.dataset))
-    batch_size = data_loader.batch_size
-    for _ in tqdm(range(N_samp), leave=False, unit='MC sample'):
-        for batch_idx, (x, y) in enumerate(data_loader):
+                             similarity: callable = cos_similarity, N_samp: int = 50, reduce: bool = True) -> torch.Tensor:
+    equivariance_scores = torch.zeros(len(data_loader.dataset), N_samp)
+    for sample_id in tqdm(range(N_samp), leave=False, unit='MC sample'):
+        sample_scores = []
+        for x, y in data_loader:
             x = x.to(device)
             y = y.to(device)
             symmetry.sample_symmetry(x)
             e1 = symmetry(explanation(x, y))
             e2 = explanation(symmetry(x), y)
-            equivariance_scores[batch_size*batch_idx:batch_size*batch_idx+len(x)] += similarity(e1, e2).detach().cpu()
-    return equivariance_scores / N_samp
+            sample_scores.append(similarity(e1, e2).detach().cpu())
+        sample_scores = torch.cat(sample_scores)
+        equivariance_scores[:, sample_id] = sample_scores
+    if reduce:
+        equivariance_scores = torch.mean(equivariance_scores, dim=-1)
+    return equivariance_scores
 
