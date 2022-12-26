@@ -16,6 +16,14 @@ class Symmetry(nn.Module, ABC):
     def sample_symmetry(self, x):
         ...
 
+    @abstractmethod
+    def get_all_symmetries(self, x):
+        ...
+
+    @abstractmethod
+    def set_symmetry(self, symmetry_param):
+        ...
+
 
 class Translation1D(Symmetry):
     def __init__(self, n_steps: int = None):
@@ -34,3 +42,11 @@ class Translation1D(Symmetry):
     def sample_symmetry(self, x):
         T = x.shape[-1]
         self.n_steps = random.randint(0, T-1)
+
+    def get_all_symmetries(self, x):
+        T = x.shape[-1]
+        return list(range(T))
+
+    def set_symmetry(self, n_steps):
+       self.n_steps = n_steps
+

@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from utils.symmetries import Symmetry
+from random import shuffle
 
 
 def l1_distance(x1: torch.Tensor, x2: torch.Tensor, reduce: bool = False) -> torch.Tensor:
@@ -27,16 +28,16 @@ def accuracy(x1: torch.Tensor, x2: torch.Tensor, reduce: bool = False) -> torch.
     return s
 
 
-def model_invariance(function: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
+def model_invariance(model: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
                      similarity: callable = cos_similarity, N_samp: int = 50, reduce: bool = True) -> torch.Tensor:
     invariance_scores = torch.zeros(len(data_loader.dataset), N_samp)
     for sample_id in tqdm(range(N_samp), leave=False, unit='MC sample'):
         sample_scores = []
         for x, _ in data_loader:
             x = x.to(device)
-            y1 = function(x)
+            y1 = model(x)
             symmetry.sample_symmetry(x)
-            y2 = function(symmetry(x))
+            y2 = model(symmetry(x))
             sample_scores.append(similarity(y1, y2).detach().cpu())
         sample_scores = torch.cat(sample_scores)
         invariance_scores[:, sample_id] = sample_scores
@@ -45,7 +46,26 @@ def model_invariance(function: nn.Module, symmetry: Symmetry, data_loader: DataL
     return invariance_scores
 
 
-def explanation_invariance(explanation: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
+def model_invariance_exact(model: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
+                           similarity: callable = cos_similarity) -> torch.Tensor:
+    invariance_scores = []
+    for x, _ in tqdm(data_loader, leave=False, unit='batch'):
+        batch_scores = None
+        x = x.to(device)
+        y1 = model(x)
+        for param in tqdm(symmetry.get_all_symmetries(x), leave=False, unit='symmetry'):
+            symmetry.set_symmetry(param)
+            y2 = model(symmetry(x))
+            if batch_scores is None:
+                batch_scores = similarity(y1, y2).detach().cpu()
+            else:
+                batch_scores += similarity(y1, y2).detach().cpu()
+        invariance_scores.append(batch_scores / len(symmetry.get_all_symmetries(x)))
+    invariance_scores = torch.cat(invariance_scores)
+    return invariance_scores
+
+
+def explanation_invariance(explainer: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
                            similarity: callable = cos_similarity, N_samp: int = 50, reduce: bool = True) -> torch.Tensor:
     invariance_scores = torch.zeros(len(data_loader.dataset), N_samp)
     for sample_id in tqdm(range(N_samp), leave=False, unit='MC sample'):
@@ -53,9 +73,9 @@ def explanation_invariance(explanation: nn.Module, symmetry: Symmetry, data_load
         for x, y in data_loader:
             x = x.to(device)
             y = y.to(device)
-            e1 = explanation(x, y)
+            e1 = explainer(x, y)
             symmetry.sample_symmetry(x)
-            e2 = explanation(symmetry(x), y)
+            e2 = explainer(symmetry(x), y)
             sample_scores.append(similarity(e1, e2).detach().cpu())
         sample_scores = torch.cat(sample_scores)
         invariance_scores[:, sample_id] = sample_scores
@@ -64,7 +84,26 @@ def explanation_invariance(explanation: nn.Module, symmetry: Symmetry, data_load
     return invariance_scores
 
 
-def explanation_equivariance(explanation: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
+def explanation_invariance_exact(explainer: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
+                                 similarity: callable = cos_similarity) -> torch.Tensor:
+    invariance_scores = []
+    for x, y in tqdm(data_loader, leave=False, unit='batch'):
+        batch_scores = None
+        x, y = x.to(device), y.to(device)
+        e1 = explainer(x, y)
+        for param in tqdm(symmetry.get_all_symmetries(x), leave=False, unit='symmetry'):
+            symmetry.set_symmetry(param)
+            e2 = explainer(symmetry(x), y)
+            if batch_scores is None:
+                batch_scores = similarity(e1, e2).detach().cpu()
+            else:
+                batch_scores += similarity(e1, e2).detach().cpu()
+        invariance_scores.append(batch_scores / len(symmetry.get_all_symmetries(x)))
+    invariance_scores = torch.cat(invariance_scores)
+    return invariance_scores
+
+
+def explanation_equivariance(explainer: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
                              similarity: callable = cos_similarity, N_samp: int = 50, reduce: bool = True) -> torch.Tensor:
     equivariance_scores = torch.zeros(len(data_loader.dataset), N_samp)
     for sample_id in tqdm(range(N_samp), leave=False, unit='MC sample'):
@@ -73,8 +112,8 @@ def explanation_equivariance(explanation: nn.Module, symmetry: Symmetry, data_lo
             x = x.to(device)
             y = y.to(device)
             symmetry.sample_symmetry(x)
-            e1 = symmetry(explanation(x, y))
-            e2 = explanation(symmetry(x), y)
+            e1 = symmetry(explainer(x, y))
+            e2 = explainer(symmetry(x), y)
             sample_scores.append(similarity(e1, e2).detach().cpu())
         sample_scores = torch.cat(sample_scores)
         equivariance_scores[:, sample_id] = sample_scores
@@ -82,3 +121,47 @@ def explanation_equivariance(explanation: nn.Module, symmetry: Symmetry, data_lo
         equivariance_scores = torch.mean(equivariance_scores, dim=-1)
     return equivariance_scores
 
+
+def explanation_equivariance_exact(explainer: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
+                                   similarity: callable = cos_similarity) -> torch.Tensor:
+    invariance_scores = []
+    for x, y in tqdm(data_loader, leave=False, unit='batch'):
+        batch_scores = None
+        x, y = x.to(device), y.to(device)
+        for param in tqdm(symmetry.get_all_symmetries(x), leave=False, unit='symmetry'):
+            symmetry.set_symmetry(param)
+            e1 = symmetry(explainer(x, y))
+            e2 = explainer(symmetry(x), y)
+            if batch_scores is None:
+                batch_scores = similarity(e1, e2).detach().cpu()
+            else:
+                batch_scores += similarity(e1, e2).detach().cpu()
+        invariance_scores.append(batch_scores / len(symmetry.get_all_symmetries(x)))
+    invariance_scores = torch.cat(invariance_scores)
+    return invariance_scores
+
+
+class InvariantExplainer(nn.Module):
+    def __init__(self, explainer: nn.Module, symmetry: Symmetry, N_inv: int, round: bool):
+        super().__init__()
+        self.explainer = explainer
+        self.symmetry = symmetry
+        self.N_inv = N_inv
+        self.round = round
+
+    def forward(self, x, y) -> torch.Tensor:
+        explanation = self.explainer(x, y)
+        if self.symmetry.get_all_symmetries(x):
+            params = self.symmetry.get_all_symmetries(x)[1:]
+            shuffle(params)
+            for param in params[:self.N_inv-1]:
+                self.symmetry.set_symmetry(param)
+                explanation += self.explainer(self.symmetry(x), y)
+        else:
+            for _ in range(self.N_inv-1):
+                self.symmetry.sample_symmetry(x)
+                explanation += self.explainer(self.symmetry(x), y)
+        explanation = explanation.float() / self.N_inv
+        if self.round:
+            explanation = torch.round(explanation)
+        return explanation

@@ -49,7 +49,7 @@ class CAR(ConceptExplainer):
         encoders = []
         classifiers = []
         for concept_id, concept_name in enumerate(self.dataset.concept_names()):
-            encoder = PCA(100)
+            encoder = PCA(10)
             classifier = SVC(kernel=self.kernel)
             X_train, C_train = self.dataset.generate_concept_dataset(concept_id, concept_set_size)
             H_train = self.model.representation(X_train.to(device)).flatten(start_dim=1).detach().cpu().numpy()

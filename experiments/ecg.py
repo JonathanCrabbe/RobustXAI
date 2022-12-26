@@ -5,15 +5,17 @@ import os
 import logging
 import argparse
 import pandas as pd
-import matplotlib.pyplot as plt
 from pathlib import Path
 from torch.utils.data import DataLoader, RandomSampler, Subset
 from datasets.loaders import ECGDataset
 from models.time_series import AllCNN, StandardCNN
 from utils.symmetries import Translation1D
 from utils.misc import set_random_seed
-from utils.plots import robustness_plots, relaxing_invariance_plots, mc_convergence_plot
-from interpretability.robustness import model_invariance, explanation_equivariance, explanation_invariance, accuracy, cos_similarity
+from utils.plots import robustness_plots, relaxing_invariance_plots, mc_convergence_plot, enforce_invariance_plot
+from interpretability.robustness import model_invariance, explanation_equivariance, explanation_invariance, \
+    accuracy, cos_similarity, InvariantExplainer, model_invariance_exact, explanation_invariance_exact, \
+    explanation_equivariance_exact
+
 from interpretability.example import SimplEx, RepresentationSimilarity, TracIN, InfluenceFunctions
 from interpretability.feature import FeatureImportance
 from interpretability.concept import CAR, CAV, ConceptExplainer
@@ -60,7 +62,6 @@ def feature_importance(
     model_dir: Path = Path.cwd() / f"results/ecg/",
     data_dir: Path = Path.cwd() / "datasets/ecg",
     n_test: int = 1000,
-    N_samp: int = 50
 ) -> None:
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -86,12 +87,12 @@ def feature_importance(
         model.load_metadata(model_dir)
         model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
         model.to(device).eval()
-        model_inv = model_invariance(model, translation, test_loader, device, N_samp=N_samp)
+        model_inv = model_invariance_exact(model, translation, test_loader, device)
         logging.info(f'Model invariance: {torch.mean(model_inv):.3g}')
         for attr_name in attr_methods:
             logging.info(f'Now working with {attr_name} explainer')
             feat_importance = FeatureImportance(attr_methods[attr_name](model))
-            explanation_equiv = explanation_equivariance(feat_importance, translation, test_loader, device, N_samp=N_samp)
+            explanation_equiv = explanation_equivariance_exact(feat_importance, translation, test_loader, device)
             for inv, equiv in zip(model_inv, explanation_equiv):
                 metrics.append([model_type, attr_name, inv.item(), equiv.item()])
             logging.info(f'Explanation equivariance: {torch.mean(explanation_equiv):.3g}')
@@ -113,7 +114,6 @@ def example_importance(
     n_test: int = 1000,
     n_train: int = 100,
     recursion_depth: int = 100,
-    N_samp: int = 50
 ) -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     set_random_seed(random_seed)
@@ -143,7 +143,7 @@ def example_importance(
         model.load_metadata(model_dir)
         model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
         model.to(device).eval()
-        model_inv = model_invariance(model, translation, test_loader, device, N_samp=N_samp)
+        model_inv = model_invariance_exact(model, translation, test_loader, device)
         logging.info(f'Model invariance: {torch.mean(model_inv):.3g}')
         for attr_name in attr_methods:
             logging.info(f'Now working with {attr_name} explainer')
@@ -151,7 +151,7 @@ def example_importance(
             ex_importance = attr_methods[attr_name](model, X_train, Y_train=Y_train, train_loader=train_loader_replacement,
                                                     loss_function=nn.CrossEntropyLoss(), batch_size=batch_size,
                                                     save_dir=save_dir/model.name, recursion_depth=recursion_depth)
-            explanation_inv = explanation_invariance(ex_importance, translation, test_loader, device, N_samp=N_samp)
+            explanation_inv = explanation_invariance_exact(ex_importance, translation, test_loader, device)
             for inv_model, inv_expl in zip(model_inv, explanation_inv):
                 metrics.append([model_type, attr_name, inv_model.item(), inv_expl.item()])
             logging.info(f'Explanation invariance: {torch.mean(explanation_inv):.3g}')
@@ -194,14 +194,13 @@ def concept_importance(
         model.load_metadata(model_dir)
         model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
         model.to(device).eval()
-        model_inv = model_invariance(model, translation, test_loader, device, N_samp=N_samp)
+        model_inv = model_invariance_exact(model, translation, test_loader, device)
         logging.info(f'Model invariance: {torch.mean(model_inv):.3g}')
         for attr_name in attr_methods:
             logging.info(f'Now working with {attr_name} explainer')
             conc_importance = attr_methods[attr_name](model, train_set, n_classes=2)
             conc_importance.fit(device, concept_set_size)
-            explanation_inv = explanation_invariance(conc_importance, translation, test_loader, device, N_samp=N_samp,
-                                                     similarity=accuracy)
+            explanation_inv = explanation_invariance_exact(conc_importance, translation, test_loader, device, similarity=accuracy)
             for inv_model, inv_expl in zip(model_inv, explanation_inv):
                 metrics.append([model_type, attr_name, inv_model.item(), inv_expl.item()])
             logging.info(f'Explanation invariance: {torch.mean(explanation_inv):.3g}')
@@ -209,6 +208,59 @@ def concept_importance(
     metrics_df.to_csv(save_dir/'metrics.csv', index=False)
     if plot:
         robustness_plots(save_dir, 'ecg', 'concept_importance')
+
+
+def enforce_invariance(
+    random_seed: int,
+    latent_dim: int,
+    batch_size: int,
+    plot: bool,
+    model_name: str = "model",
+    model_dir: Path = Path.cwd() / f"results/ecg/",
+    data_dir: Path = Path.cwd() / "datasets/ecg",
+    n_test: int = 1000,
+    concept_set_size: int = 100,
+    N_samp: int = 50
+) -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    set_random_seed(random_seed)
+    train_set = ECGDataset(data_dir, train=True, binarize_label=False, balance_dataset=False)
+    test_set = ECGDataset(data_dir, train=False, balance_dataset=False)
+    test_subset = Subset(test_set, torch.randperm(len(test_set))[:n_test])
+    test_loader = DataLoader(test_subset, batch_size)
+    models = {'All-CNN': AllCNN(latent_dim, f'{model_name}_allcnn')}
+    attr_methods = {'CAV': CAV, 'CAR': CAR}
+    model_dir = model_dir/model_name
+    save_dir = model_dir/'enforce_invariance'
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+    translation = Translation1D()
+    metrics = []
+    for model_type in models:
+        logging.info(f'Now working with {model_type} classifier')
+        model = models[model_type]
+        model.load_metadata(model_dir)
+        model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
+        model.to(device).eval()
+        model_inv = model_invariance_exact(model, translation, test_loader, device)
+        logging.info(f'Model invariance: {torch.mean(model_inv):.3g}')
+        for attr_name in attr_methods:
+            logging.info(f'Now working with {attr_name} explainer')
+            attr_method = attr_methods[attr_name](model, train_set, n_classes=2)
+            if isinstance(attr_method, ConceptExplainer):
+                attr_method.fit(device, concept_set_size)
+            for N_inv in [1, 5, 20, 50, 100, 150, 187]:
+                logging.info(f'Now working with invariant explainer with N_inv = {N_inv}')
+                inv_method = InvariantExplainer(attr_method, translation, N_inv, isinstance(attr_method, ConceptExplainer))
+                explanation_inv = explanation_invariance_exact(inv_method, translation, test_loader, device, similarity=accuracy)
+                logging.info(f'N_inv = {N_inv} - Explanation invariance = {torch.mean(explanation_inv):.3g}')
+                for inv_expl in explanation_inv:
+                    metrics.append([model_type, attr_name, N_inv, inv_expl.item()])
+    metrics_df = pd.DataFrame(data=metrics,
+                              columns=['Model Type', 'Explanation', 'N_inv', 'Explanation Invariance'])
+    metrics_df.to_csv(save_dir / 'metrics.csv', index=False)
+    if plot:
+        enforce_invariance_plot(save_dir, 'ecg')
 
 
 def mc_convergence(
@@ -324,6 +376,8 @@ if __name__ == "__main__":
             example_importance(args.seed, args.latent_dim, args.batch_size, args.plot, model_name, n_test=args.n_test)
         case 'concept_importance':
             concept_importance(args.seed, args.latent_dim, args.batch_size, args.plot, model_name, n_test=args.n_test)
+        case 'enforce_invariance':
+            enforce_invariance(args.seed, args.latent_dim, args.batch_size, args.plot, model_name, n_test=args.n_test)
         case 'mc_convergence':
             mc_convergence(args.seed, args.latent_dim, args.batch_size, args.plot, model_name, n_test=args.n_test)
         case 'understand_randomness':

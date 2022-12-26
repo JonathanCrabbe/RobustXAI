@@ -75,6 +75,16 @@ def understanding_randomness_plots(plot_dir: Path, dataset: str) -> None:
     plt.show()
 
 
+def enforce_invariance_plot(plot_dir: Path, dataset: str) -> None:
+    metrics_df = pd.read_csv(plot_dir/'metrics.csv')
+    sns.lineplot(metrics_df, x='N_inv', y='Explanation Invariance', hue='Explanation')
+    plt.legend()
+    plt.xlabel(r'$N_{\mathrm{inv}}$')
+    plt.tight_layout()
+    plt.savefig(plot_dir / f'enforce_invariance_{dataset}.pdf')
+    plt.close()
+
+
 def wrap_labels(ax, width, break_long_words=False, do_y: bool = False) -> None:
     """
     Break labels in several lines in a figure
