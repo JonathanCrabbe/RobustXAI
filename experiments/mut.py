@@ -7,9 +7,11 @@ from datasets.loaders import MutagenicityDataset
 from models.graphs import ClassifierMutagenicity
 from pathlib import Path
 from utils.misc import set_random_seed
-from captum.attr import IntegratedGradients, GradientShap, FeaturePermutation, FeatureAblation
+from captum.attr import IntegratedGradients, GradientShap, FeaturePermutation, FeatureAblation, Saliency
 from utils.symmetries import GraphPermutation
 from interpretability.robustness import graph_model_invariance
+from interpretability.feature import FeatureImportance
+from tqdm import tqdm
 
 
 def train_mut_model(random_seed: int, latent_dim: int, batch_size: int, model_name: str = "model",
@@ -46,16 +48,23 @@ def feature_importance(
     model.load_metadata(model_dir)
     model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
     model.to(device).eval()
-    attr_methods = {'Integrated Gradients': IntegratedGradients, 'Gradient Shap': GradientShap,
-                    'Feature Permutation': FeaturePermutation, 'Feature Ablation': FeatureAblation}
+    attr_methods = {'Feature Ablation': FeatureAblation, 'Gradient Shap': GradientShap,
+                    'Integrated Gradients': IntegratedGradients}
     save_dir = model_dir/'feature_importance'
     if not save_dir.exists():
         os.makedirs(save_dir)
     graph_perm = GraphPermutation()
     metrics = []
     logging.info(f'Now working with Mutagenicity classifier')
-    model_inv = graph_model_invariance(model, graph_perm, test_loader, device)
+    model_inv = graph_model_invariance(model, graph_perm, test_loader, device, N_samp=1)
     logging.info(f'Model invariance: {torch.mean(model_inv).item():.3g}')
+    for attr_name in attr_methods:
+        logging.info(f'Now working with {attr_name}')
+        feat_importance = FeatureImportance(attr_methods[attr_name](model))
+        for data in tqdm(test_loader, leave=False, unit='example'):
+            data = data.to(device)
+            importance_scores = feat_importance.forward_graph(data)
+            assert importance_scores.shape == data.x.shape
 
 
 if __name__ == "__main__":
