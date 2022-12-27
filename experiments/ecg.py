@@ -32,7 +32,7 @@ def train_ecg_model(
     model_dir: Path = Path.cwd() / f"results/ecg/",
     data_dir: Path = Path.cwd() / "datasets/ecg",
 ) -> None:
-    logging.info("Fitting the ECG classifiers.")
+    logging.info("Fitting the ECG classifiers")
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     set_random_seed(random_seed)
     model_dir = model_dir / model_name

@@ -50,3 +50,28 @@ class Translation1D(Symmetry):
     def set_symmetry(self, n_steps):
        self.n_steps = n_steps
 
+
+class GraphPermutation(nn.Module):
+    def __init__(self, perm: list = None):
+        super().__init__()
+        self.perm = perm if perm else []
+
+    def forward(self, data):
+        num_nodes = data.num_nodes
+        if len(self.perm) != num_nodes:
+            self.sample_symmetry(data)
+        new_data = data.clone().cpu()
+        new_data.x = new_data.x[self.perm, :]
+        perm_lambda = lambda x: self.perm[x]
+        new_data.edge_index.apply_(perm_lambda)
+        return new_data.to(data.x.device)
+
+    def sample_symmetry(self, data):
+        num_nodes = data.num_nodes
+        self.perm = torch.randperm(num_nodes)
+
+    def get_all_symmetries(self, data):
+        return None
+
+    def set_symmetry(self, perm: list):
+        self.perm = perm

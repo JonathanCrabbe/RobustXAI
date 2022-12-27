@@ -39,8 +39,20 @@ class ClassifierMutagenicity(torch.nn.Module):
         x = self.lin2(x)
         return F.log_softmax(x, dim=-1)
 
-    def representation(self, x):
-        ...
+    def representation(self, x, edge_index, batch, edge_weight=None):
+        x = self.conv1(x, edge_index, edge_weight).relu()
+        x = self.conv2(x, edge_index, edge_weight).relu()
+        x = self.conv3(x, edge_index, edge_weight).relu()
+        x = self.conv4(x, edge_index, edge_weight).relu()
+        x = self.conv5(x, edge_index, edge_weight).relu()
+        return x
+
+    def representation_to_output(self, x, edge_index, batch, edge_weight=None):
+        x = global_add_pool(x, batch)
+        x = self.lin1(x).relu()
+        x = F.dropout(x, p=0.5, training=self.training)
+        x = self.lin2(x)
+        return F.log_softmax(x, dim=-1)
 
     def last_layer(self) -> nn.Module or None:
         return self.lin2
