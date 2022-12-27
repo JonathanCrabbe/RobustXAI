@@ -6,7 +6,8 @@ import numpy as np
 from pathlib import Path
 from torch.utils.data import Dataset, SubsetRandomSampler
 from imblearn.over_sampling import SMOTE
-from abc import ABC, abstractmethod, abstractproperty
+from abc import ABC, abstractmethod
+from torch_geometric.datasets import TUDataset
 
 
 class ConceptDataset(ABC, Dataset):
@@ -92,3 +93,24 @@ class ECGDataset(ConceptDataset):
 
     def concept_names(self):
         return ["Supraventricular", "Premature Ventricular", "Fusion Beats", "Unknown"]
+
+
+class MutagenicityDataset(ConceptDataset, Dataset):
+
+    def __init__(self, data_dir: Path, train: bool, random_seed: int = 42):
+        torch.manual_seed(random_seed)
+        dataset = TUDataset(str(data_dir), name='Mutagenicity').shuffle()
+        self.dataset = dataset[len(dataset) // 10:] if train else dataset[:len(dataset) // 10]
+        self.random_seed = random_seed
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def __getitem__(self, idx):
+        return self.dataset.get(idx)
+
+    def generate_concept_dataset(self, concept_id: int, concept_set_size: int) -> tuple:
+        ...
+
+    def concept_names(self):
+        ...
