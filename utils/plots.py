@@ -4,7 +4,9 @@ import matplotlib.pyplot as plt
 import textwrap
 import logging
 import argparse
+import networkx as nx
 from pathlib import Path
+from torch_geometric.utils import to_networkx
 
 sns.set_style("whitegrid")
 sns.set_palette('colorblind')
@@ -83,6 +85,40 @@ def enforce_invariance_plot(plot_dir: Path, dataset: str) -> None:
     plt.tight_layout()
     plt.savefig(plot_dir / f'enforce_invariance_{dataset}.pdf')
     plt.close()
+
+
+def draw_molecule(g, edge_mask=None, draw_edge_labels=False):
+    g = g.copy().to_undirected()
+    node_labels = {}
+    for u, data in g.nodes(data=True):
+        node_labels[u] = data['name']
+    pos = nx.planar_layout(g)
+    pos = nx.spring_layout(g, pos=pos)
+    if edge_mask is None:
+        edge_color = 'black'
+        widths = None
+    else:
+        edge_color = [edge_mask[(u, v)] for u, v in g.edges()]
+        widths = [x * 10 for x in edge_color]
+    nx.draw(g, pos=pos, labels=node_labels, width=widths,
+            edge_color=edge_color, edge_cmap=plt.cm.Blues,
+            node_color='azure')
+
+    if draw_edge_labels and edge_mask is not None:
+        edge_labels = {k: ('%.2f' % v) for k, v in edge_mask.items()}
+        nx.draw_networkx_edge_labels(g, pos, edge_labels=edge_labels,
+                                     font_color='red')
+    plt.show()
+
+
+def to_molecule(data):
+    ATOM_MAP = ['C', 'O', 'Cl', 'H', 'N', 'F',
+                'Br', 'S', 'P', 'I', 'Na', 'K', 'Li', 'Ca']
+    g = to_networkx(data, node_attrs=['x'])
+    for u, data in g.nodes(data=True):
+        data['name'] = ATOM_MAP[data['x'].index(1.0)]
+        del data['x']
+    return g
 
 
 def wrap_labels(ax, width, break_long_words=False, do_y: bool = False) -> None:

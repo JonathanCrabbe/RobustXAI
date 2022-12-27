@@ -51,10 +51,10 @@ class Translation1D(Symmetry):
        self.n_steps = n_steps
 
 
-class GraphPermutation(nn.Module):
+class GraphPermutation(Symmetry):
     def __init__(self, perm: list = None):
         super().__init__()
-        self.perm = perm if perm else []
+        self.perm = perm if perm else torch.tensor([])
 
     def forward(self, data):
         num_nodes = data.num_nodes
@@ -62,7 +62,8 @@ class GraphPermutation(nn.Module):
             self.sample_symmetry(data)
         new_data = data.clone().cpu()
         new_data.x = new_data.x[self.perm, :]
-        perm_lambda = lambda x: self.perm[x]
+        inv_perm = torch.argsort(self.perm)
+        perm_lambda = lambda x: inv_perm[x]
         new_data.edge_index.apply_(perm_lambda)
         return new_data.to(data.x.device)
 

@@ -5,6 +5,7 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from utils.symmetries import Symmetry
 from random import shuffle
+from utils.plots import draw_molecule, to_molecule
 
 
 def l1_distance(x1: torch.Tensor, x2: torch.Tensor, reduce: bool = False) -> torch.Tensor:
@@ -62,6 +63,25 @@ def model_invariance_exact(model: nn.Module, symmetry: Symmetry, data_loader: Da
                 batch_scores += similarity(y1, y2).detach().cpu()
         invariance_scores.append(batch_scores / len(symmetry.get_all_symmetries(x)))
     invariance_scores = torch.cat(invariance_scores)
+    return invariance_scores
+
+
+def graph_model_invariance(model: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
+                           similarity: callable = cos_similarity, N_samp: int = 50, reduce: bool = True) -> torch.Tensor:
+    invariance_scores = torch.zeros(len(data_loader.dataset), N_samp)
+    for sample_id in tqdm(range(N_samp), leave=False, unit='MC sample'):
+        sample_scores = []
+        for data in data_loader:
+            data = data.to(device)
+            symmetry.sample_symmetry(data)
+            new_data = symmetry(data)
+            y1 = model(data.x, data.edge_index, data.batch)
+            y2 = model(new_data.x, new_data.edge_index, new_data.batch)
+            sample_scores.append(similarity(y1, y2).detach().cpu())
+        sample_scores = torch.cat(sample_scores)
+        invariance_scores[:, sample_id] = sample_scores
+    if reduce:
+        invariance_scores = torch.mean(invariance_scores, dim=-1)
     return invariance_scores
 
 

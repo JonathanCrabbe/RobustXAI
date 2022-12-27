@@ -9,6 +9,7 @@ from pathlib import Path
 from utils.misc import set_random_seed
 from captum.attr import IntegratedGradients, GradientShap, FeaturePermutation, FeatureAblation
 from utils.symmetries import GraphPermutation
+from interpretability.robustness import graph_model_invariance
 
 
 def train_mut_model(random_seed: int, latent_dim: int, batch_size: int, model_name: str = "model",
@@ -21,7 +22,7 @@ def train_mut_model(random_seed: int, latent_dim: int, batch_size: int, model_na
         os.makedirs(model_dir)
     train_set = MutagenicityDataset(data_dir, train=True)
     test_set = MutagenicityDataset(data_dir, train=False)
-    train_loader = DataLoader(train_set, batch_size=batch_size)
+    train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_set, batch_size=batch_size)
     model = ClassifierMutagenicity(latent_dim)
     model.fit(device, train_loader, test_loader, model_dir, checkpoint_interval=20)
@@ -39,11 +40,12 @@ def feature_importance(
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     set_random_seed(random_seed)
     test_set = MutagenicityDataset(data_dir, train=False)
-    test_loader = DataLoader(test_set, batch_size=1)
+    test_loader = DataLoader(test_set, batch_size=1, shuffle=False)
     model_dir = model_dir / model_name
     model = ClassifierMutagenicity(latent_dim)
     model.load_metadata(model_dir)
     model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
+    model.to(device).eval()
     attr_methods = {'Integrated Gradients': IntegratedGradients, 'Gradient Shap': GradientShap,
                     'Feature Permutation': FeaturePermutation, 'Feature Ablation': FeatureAblation}
     save_dir = model_dir/'feature_importance'
@@ -51,12 +53,9 @@ def feature_importance(
         os.makedirs(save_dir)
     graph_perm = GraphPermutation()
     metrics = []
-    for data in test_loader:
-        data = data.to(device)
-        new_data = graph_perm(data)
-        print(data.x)
-        print(new_data.x)
-        break
+    logging.info(f'Now working with Mutagenicity classifier')
+    model_inv = graph_model_invariance(model, graph_perm, test_loader, device)
+    logging.info(f'Model invariance: {torch.mean(model_inv).item():.3g}')
 
 
 if __name__ == "__main__":
