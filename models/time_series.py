@@ -106,8 +106,8 @@ class ClassifierECG(ABC, nn.Module):
         test_loader: torch.utils.data.DataLoader,
         save_dir: pathlib.Path,
         lr: int = 1e-03,
-        n_epoch: int = 200,
-        patience: int = 20,
+        n_epoch: int = 500,
+        patience: int = 50,
         checkpoint_interval: int = -1,
         augmentation: bool = True
     ) -> None:

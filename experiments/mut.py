@@ -2,16 +2,18 @@ import torch
 import os
 import logging
 import argparse
+import pandas as pd
 from torch_geometric.loader import DataLoader
 from datasets.loaders import MutagenicityDataset
 from models.graphs import ClassifierMutagenicity
 from pathlib import Path
 from utils.misc import set_random_seed
+from utils.plots import robustness_plots
 from captum.attr import IntegratedGradients, GradientShap, FeaturePermutation, FeatureAblation, Saliency
 from utils.symmetries import GraphPermutation
-from interpretability.robustness import graph_model_invariance
+from interpretability.robustness import graph_model_invariance, graph_explanation_equivariance
 from interpretability.feature import FeatureImportance
-from tqdm import tqdm
+from torch.utils.data import Subset
 
 
 def train_mut_model(random_seed: int, latent_dim: int, batch_size: int, model_name: str = "model",
@@ -61,10 +63,15 @@ def feature_importance(
     for attr_name in attr_methods:
         logging.info(f'Now working with {attr_name}')
         feat_importance = FeatureImportance(attr_methods[attr_name](model))
-        for data in tqdm(test_loader, leave=False, unit='example'):
-            data = data.to(device)
-            importance_scores = feat_importance.forward_graph(data)
-            assert importance_scores.shape == data.x.shape
+        explanation_equiv = graph_explanation_equivariance(feat_importance, graph_perm, test_loader, device, N_samp=1)
+        logging.info(f'Explanation equivariance: {torch.mean(explanation_equiv):.3g}')
+        for inv, equiv in zip(model_inv, explanation_equiv):
+            metrics.append(['GNN', attr_name, inv.item(), equiv.item()])
+    metrics_df = pd.DataFrame(data=metrics,
+                              columns=['Model Type', 'Explanation', 'Model Invariance', 'Explanation Equivariance'])
+    metrics_df.to_csv(save_dir / 'metrics.csv', index=False)
+    if plot:
+        robustness_plots(save_dir, 'mut', 'feature_importance')
 
 
 if __name__ == "__main__":

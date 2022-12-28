@@ -67,6 +67,9 @@ class GraphPermutation(Symmetry):
         new_data.edge_index.apply_(perm_lambda)
         return new_data.to(data.x.device)
 
+    def forward_nodes(self, x: torch.Tensor) -> torch.Tensor:
+        return x[self.perm, :]
+
     def sample_symmetry(self, data):
         num_nodes = data.num_nodes
         self.perm = torch.randperm(num_nodes)
