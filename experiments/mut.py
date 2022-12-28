@@ -9,7 +9,7 @@ from models.graphs import ClassifierMutagenicity
 from pathlib import Path
 from utils.misc import set_random_seed
 from utils.plots import robustness_plots
-from captum.attr import IntegratedGradients, GradientShap, FeaturePermutation, FeatureAblation, Saliency
+from captum.attr import IntegratedGradients, GradientShap, FeatureAblation
 from utils.symmetries import GraphPermutation
 from interpretability.robustness import graph_model_invariance, graph_explanation_equivariance
 from interpretability.feature import FeatureImportance
@@ -24,12 +24,12 @@ def train_mut_model(random_seed: int, latent_dim: int, batch_size: int, model_na
     model_dir = model_dir / model_name
     if not model_dir.exists():
         os.makedirs(model_dir)
-    train_set = MutagenicityDataset(data_dir, train=True)
-    test_set = MutagenicityDataset(data_dir, train=False)
+    train_set = MutagenicityDataset(data_dir, train=True, random_seed=random_seed)
+    test_set = MutagenicityDataset(data_dir, train=False, random_seed=random_seed)
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     test_loader = DataLoader(test_set, batch_size=batch_size)
     model = ClassifierMutagenicity(latent_dim)
-    model.fit(device, train_loader, test_loader, model_dir, checkpoint_interval=20)
+    model.fit(device, train_loader, test_loader, model_dir, checkpoint_interval=20, patience=50, n_epoch=500)
 
 
 def feature_importance(
@@ -43,7 +43,7 @@ def feature_importance(
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     set_random_seed(random_seed)
-    test_set = MutagenicityDataset(data_dir, train=False)
+    test_set = MutagenicityDataset(data_dir, train=False, random_seed=random_seed)
     test_loader = DataLoader(test_set, batch_size=1, shuffle=False)
     model_dir = model_dir / model_name
     model = ClassifierMutagenicity(latent_dim)

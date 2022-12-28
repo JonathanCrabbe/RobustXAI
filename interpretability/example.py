@@ -20,45 +20,65 @@ class ExampleBasedExplainer(nn.Module, ABC):
 
 
 class SimplEx(ExampleBasedExplainer):
-    def __init__(self, model: nn.Module,  X_train: torch.Tensor, **kwargs):
+    def __init__(self, model: nn.Module,  X_train: torch.Tensor, layer: nn.Module, **kwargs):
         super().__init__(model, X_train)
-        self.H_train = self.model.representation(self.X_train).detach().flatten(start_dim=1)
+        self.H = torch.empty(0)
+
+        def hook(module, input, output):
+            self.H = output.flatten(start_dim=1).detach()
+
+        self.handle = layer.register_forward_hook(hook)
+        self.model(X_train)
+        self.H_train = self.H.clone()
+
+    def remove_hook(self):
+        self.handle.remove()
 
     def forward(self, x, y) -> torch.Tensor:
-        h = self.model.representation(x).detach().flatten(start_dim=1)
-        attribution = self.compute_weights(h, self.H_train)
+        self.model(x)
+        attribution = self.compute_weights(self.H, self.H_train)
         return attribution
 
     @staticmethod
     def compute_weights(
-            h: torch.Tensor,
+            H: torch.Tensor,
             H_train: torch.Tensor,
             n_epoch: int = 1000,
     ) -> torch.Tensor:
-        preweights = torch.zeros((len(h), len(H_train)), requires_grad=True, device=H_train.device)
+        preweights = torch.zeros((len(H), len(H_train)), requires_grad=True, device=H_train.device)
         optimizer = torch.optim.Adam([preweights])
         for epoch in range(n_epoch):
             optimizer.zero_grad()
             weights = F.softmax(preweights, dim=-1)
             H_approx = torch.einsum("ij,jk->ik", weights, H_train)
-            error = ((H_approx - h) ** 2).sum()
+            error = ((H_approx - H) ** 2).sum()
             error.backward()
             optimizer.step()
-        return torch.softmax(preweights, dim=-1).detach()
+        return torch.softmax(preweights, dim=-1).detach().cpu()
 
 
 class RepresentationSimilarity(ExampleBasedExplainer):
-    def __init__(self, model: nn.Module,  X_train: torch.Tensor, **kwargs):
+    def __init__(self, model: nn.Module,  X_train: torch.Tensor, layer: nn.Module, **kwargs):
         super().__init__(model, X_train)
-        self.H_train = self.model.representation(self.X_train).detach().flatten(start_dim=1).unsqueeze(0)
+        self.H = torch.empty(0)
+
+        def hook(module, input, output):
+            self.H = output.flatten(start_dim=1).detach()
+
+        self.handle = layer.register_forward_hook(hook)
+        self.model(X_train)
+        self.H_train = self.H.clone()
+
+    def remove_hook(self):
+        self.handle.remove()
 
     def forward(self, x, y) -> torch.Tensor:
-        H = self.model.representation(x).detach().flatten(start_dim=1).unsqueeze(1)
-        attribution = F.cosine_similarity(self.H_train, H, dim=-1)
+        self.model(x)
+        attribution = F.cosine_similarity(self.H_train.unsqueeze(0), self.H.unsqueeze(1), dim=-1).cpu()
         return attribution
 
 
-class TracIN(ExampleBasedExplainer):
+class TracIn(ExampleBasedExplainer):
     def __init__(self, model: nn.Module,  X_train: torch.Tensor,  Y_train: torch.Tensor,
                  loss_function: callable, save_dir: Path, **kwargs):
         super().__init__(model, X_train)

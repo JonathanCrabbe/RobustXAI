@@ -97,7 +97,7 @@ class ECGDataset(ConceptDataset):
 
 class MutagenicityDataset(ConceptDataset, Dataset):
 
-    def __init__(self, data_dir: Path, train: bool, random_seed: int = 42):
+    def __init__(self, data_dir: Path, train: bool, random_seed: int = 11):
         torch.manual_seed(random_seed)
         dataset = TUDataset(str(data_dir), name='Mutagenicity').shuffle()
         self.dataset = dataset[len(dataset) // 10:] if train else dataset[:len(dataset) // 10]

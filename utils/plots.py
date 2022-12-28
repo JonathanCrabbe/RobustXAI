@@ -10,7 +10,7 @@ from torch_geometric.utils import to_networkx
 
 sns.set_style("whitegrid")
 sns.set_palette('colorblind')
-markers = ["o", "s", "X", "D", "v"]
+markers = ["o", "s", "X", "D", "v", "p"]
 
 
 def robustness_plots(plot_dir: Path, dataset: str, experiment_name: str) -> None:

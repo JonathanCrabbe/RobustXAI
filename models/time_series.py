@@ -106,8 +106,8 @@ class ClassifierECG(ABC, nn.Module):
         test_loader: torch.utils.data.DataLoader,
         save_dir: pathlib.Path,
         lr: int = 1e-03,
-        n_epoch: int = 500,
-        patience: int = 50,
+        n_epoch: int = 200,
+        patience: int = 20,
         checkpoint_interval: int = -1,
         augmentation: bool = True
     ) -> None:
@@ -216,7 +216,8 @@ class StandardCNN(ClassifierECG):
         self.maxpool1 = nn.MaxPool1d(2)
         self.maxpool2 = nn.MaxPool1d(2)
         self.maxpool3 = nn.MaxPool1d(2)
-        self.fc1 = nn.Linear(2944, self.latent_dim)
+        self.fc1 = nn.Linear(2944, latent_dim)
+        self.fc2 = nn.Linear(latent_dim, latent_dim)
         self.out = nn.Linear(self.latent_dim, 2)
         self.leaky_relu = nn.LeakyReLU(inplace=True)
 
@@ -230,6 +231,8 @@ class StandardCNN(ClassifierECG):
         x = x.view(x.shape[0], -1)
         x = self.fc1(x)
         x = self.leaky_relu(x)
+        x = self.fc2(x)
+        x = self.leaky_relu(x)
         x = self.out(x)
         return x
 
@@ -239,12 +242,14 @@ class StandardCNN(ClassifierECG):
         x = self.cnn2(x)
         x = self.maxpool2(x)
         x = self.cnn3(x)
-        return x
-
-    def representation_to_output(self, x):
         x = self.maxpool3(x)
         x = x.view(x.shape[0], -1)
         x = self.fc1(x)
+        return x
+
+    def representation_to_output(self, x):
+        x = self.leaky_relu(x)
+        x = self.fc2(x)
         x = self.leaky_relu(x)
         x = self.out(x)
         return x
@@ -259,8 +264,10 @@ class AllCNN(ClassifierECG):
         self.cnn1 = nn.Conv1d(1, 16, kernel_size=3, stride=1, padding=1, padding_mode='circular')
         self.cnn2 = nn.Conv1d(16, 64, kernel_size=3, stride=1, padding=1, padding_mode='circular')
         self.cnn3 = nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=1, padding_mode='circular')
-        self.cnn4 = nn.Conv1d(128, latent_dim, kernel_size=3, stride=1, padding=1, padding_mode='circular')
-        self.out = nn.Conv1d(latent_dim, 2, kernel_size=3, stride=1, padding=1, padding_mode='circular')
+        self.fc1 = nn.Linear(128, latent_dim)
+        self.fc2 = nn.Linear(latent_dim, latent_dim)
+        self.out = nn.Linear(latent_dim, 2)
+        self.leaky_relu = nn.LeakyReLU(inplace=True)
 
     def forward(self, x):
         x = self.cnn1(x)
@@ -268,11 +275,12 @@ class AllCNN(ClassifierECG):
         x = self.cnn2(x)
         x = F.relu(x)
         x = self.cnn3(x)
-        x = F.relu(x)
-        x = self.cnn4(x)
-        x = F.relu(x)
-        x = self.out(x)
         x = torch.mean(x, dim=-1)
+        x = self.fc1(x)
+        x = self.leaky_relu(x)
+        x = self.fc2(x)
+        x = self.leaky_relu(x)
+        x = self.out(x)
         return x
 
     def representation(self, x):
@@ -281,14 +289,15 @@ class AllCNN(ClassifierECG):
         x = self.cnn2(x)
         x = F.relu(x)
         x = self.cnn3(x)
+        x = torch.mean(x, dim=-1)
+        x = self.fc1(x)
         return x
 
     def representation_to_output(self, x):
-        x = F.relu(x)
-        x = self.cnn4(x)
-        x = F.relu(x)
+        x = self.leaky_relu(x)
+        x = self.fc2(x)
+        x = self.leaky_relu(x)
         x = self.out(x)
-        x = torch.mean(x, dim=-1)
         return x
 
     def last_layer(self) -> nn.Module or None:
