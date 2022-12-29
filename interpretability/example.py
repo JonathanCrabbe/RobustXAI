@@ -323,3 +323,73 @@ class GraphTracIn(GraphExampleBasedExplainer):
                     grad = direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True))
             torch.save(grad.detach().cpu(), self.save_dir/f"train_grad{idx}.pt")
         self.train_grads = True
+
+
+class GraphInfluenceFunctions(GraphExampleBasedExplainer):
+    def __init__(self, model: nn.Module, data_train: DataLoader, train_sampler: DataLoader,
+                 loss_function: callable, save_dir: Path, recursion_depth: int, device: torch.device, **kwargs):
+        super().__init__(model, data_train)
+        self.last_layer = model.last_layer()
+        self.train_sampler = train_sampler
+        self.loss_function = loss_function
+        self.ihvp = False
+        self.device = device
+        self.save_dir = save_dir/'influence_functions'
+        self.recursion_depth = recursion_depth
+        if not self.save_dir.exists():
+            os.makedirs(self.save_dir)
+
+    def evaluate_ihvp(self,  damp: float = 1e-3, scale: float = 1000,) -> None:
+        for idx, data in enumerate(self.data_train):
+            data = data.to(self.device)
+            loss = self.loss_function(self.model(data.x, data.edge_index, data.batch), data.y)
+            grad = direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True))
+            ihvp = grad.detach().clone()
+            train_sampler = iter(self.train_sampler)
+            for _ in range(self.recursion_depth):
+                data_sample = next(train_sampler)
+                data_sample = data_sample.to(self.device)
+                sampled_loss = self.loss_function(self.model(data_sample.x, data_sample.edge_index, data_sample.batch), data_sample.y)
+                ihvp_prev = ihvp.detach().clone()
+                hvp = direct_sum(self.hessian_vector_product(sampled_loss, ihvp_prev))
+                ihvp = grad + (1 - damp) * ihvp - hvp / scale
+            torch.save(ihvp.detach().cpu(), self.save_dir/f"train_ihvp{idx}.pt")
+        self.ihvp = True
+
+    def forward(self, data: GraphData):
+        if not self.ihvp:
+            self.evaluate_ihvp()
+        attribution = torch.zeros(1, len(self.data_train.dataset))
+        test_loss = self.loss_function(self.model(data.x, data.edge_index, data.batch), data.y)
+        test_grad = direct_sum(torch.autograd.grad(test_loss, self.last_layer.parameters(), create_graph=True))
+        test_grad = test_grad.detach().cpu()
+        for train_idx in range(len(self.data_train.dataset)):
+            ihvp = torch.load(self.save_dir/f"train_ihvp{train_idx}.pt")
+            attribution[0, train_idx] = torch.dot(ihvp, test_grad)
+        return attribution
+
+    def hessian_vector_product(self, loss: torch.Tensor, v: torch.Tensor):
+        """
+        Multiplies the Hessians of the loss of a model with respect to its parameters by a vector v.
+        Adapted from: https://github.com/kohpangwei/influence-release
+        This function uses a backproplike approach to compute the product between the Hessian
+        and another vector efficiently, which even works for large Hessians with O(p) compelxity for p parameters.
+        Arguments:
+            loss: scalar/tensor, for example the output of the loss function
+            model: the model for which the Hessian of the loss is evaluated
+            v: list of torch tensors, rnn.parameters(),
+                will be multiplied with the Hessian
+        Returns:
+            return_grads: list of torch tensors, contains product of Hessian and v.
+        """
+
+        # First backprop
+        first_grads = direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), retain_graph=True, create_graph=True))
+
+        # Elementwise products
+        elemwise_products = torch.dot(first_grads.flatten(), v.flatten())
+
+        # Second backprop
+        HVP_ = torch.autograd.grad(elemwise_products, self.last_layer.parameters())
+        self.model.zero_grad()
+        return HVP_

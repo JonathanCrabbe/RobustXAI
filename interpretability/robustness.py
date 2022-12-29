@@ -5,7 +5,6 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from utils.symmetries import Symmetry
 from random import shuffle
-from utils.plots import draw_molecule, to_molecule
 
 
 def l1_distance(x1: torch.Tensor, x2: torch.Tensor, reduce: bool = False) -> torch.Tensor:
@@ -16,7 +15,7 @@ def l1_distance(x1: torch.Tensor, x2: torch.Tensor, reduce: bool = False) -> tor
 
 
 def cos_similarity(x1: torch.Tensor, x2: torch.Tensor, reduce: bool = False) -> torch.Tensor:
-    s = F.cosine_similarity(torch.flatten(x1, start_dim=1), torch.flatten(x2, start_dim=1))
+    s = F.cosine_similarity(torch.flatten(x1, start_dim=1)+1e-4, torch.flatten(x2, start_dim=1)+1e-4)  # Small offset for numerical stability
     if reduce:
         s = torch.mean(s)
     return s

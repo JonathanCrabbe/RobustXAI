@@ -8,6 +8,7 @@ from torch.utils.data import Dataset, SubsetRandomSampler
 from imblearn.over_sampling import SMOTE
 from abc import ABC, abstractmethod
 from torch_geometric.datasets import TUDataset
+from utils.misc import to_molecule
 
 
 class ConceptDataset(ABC, Dataset):
@@ -110,7 +111,8 @@ class MutagenicityDataset(ConceptDataset, Dataset):
         return self.dataset.get(idx)
 
     def generate_concept_dataset(self, concept_id: int, concept_set_size: int) -> tuple:
-        ...
+        for graph in iter(self.dataset):
+            print(graph)
 
     def concept_names(self):
         ...

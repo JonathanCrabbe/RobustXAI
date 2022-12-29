@@ -6,7 +6,7 @@ import logging
 import argparse
 import networkx as nx
 from pathlib import Path
-from torch_geometric.utils import to_networkx
+
 
 sns.set_style("whitegrid")
 sns.set_palette('colorblind')
@@ -20,6 +20,7 @@ def robustness_plots(plot_dir: Path, dataset: str, experiment_name: str) -> None
         y = 'Explanation Equivariance' if 'Explanation Equivariance' in metrics_df.columns else 'Explanation Invariance'
         ax = sns.boxplot(sub_df, x='Explanation', y=y, showfliers=False)
         wrap_labels(ax, 10)
+        plt.ylim(-1.1, 1.1)
         plt.tight_layout()
         plt.savefig(plot_dir/f'{experiment_name}_{dataset}_{model_type.lower().replace(" ", "_")}.pdf')
         plt.close()
@@ -109,16 +110,6 @@ def draw_molecule(g, edge_mask=None, draw_edge_labels=False):
         nx.draw_networkx_edge_labels(g, pos, edge_labels=edge_labels,
                                      font_color='red')
     plt.show()
-
-
-def to_molecule(data):
-    ATOM_MAP = ['C', 'O', 'Cl', 'H', 'N', 'F',
-                'Br', 'S', 'P', 'I', 'Na', 'K', 'Li', 'Ca']
-    g = to_networkx(data, node_attrs=['x'])
-    for u, data in g.nodes(data=True):
-        data['name'] = ATOM_MAP[data['x'].index(1.0)]
-        del data['x']
-    return g
 
 
 def wrap_labels(ax, width, break_long_words=False, do_y: bool = False) -> None:

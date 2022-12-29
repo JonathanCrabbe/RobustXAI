@@ -14,7 +14,7 @@ from captum.attr import IntegratedGradients, GradientShap, FeatureAblation
 from utils.symmetries import GraphPermutation
 from interpretability.robustness import graph_model_invariance, graph_explanation_equivariance, graph_explanation_invariance
 from interpretability.feature import FeatureImportance
-from interpretability.example import GraphRepresentationSimilarity, GraphSimplEx, GraphTracIn
+from interpretability.example import GraphRepresentationSimilarity, GraphSimplEx, GraphTracIn, GraphInfluenceFunctions
 from torch.utils.data import Subset, RandomSampler
 
 
@@ -101,8 +101,8 @@ def example_importance(
     test_set = MutagenicityDataset(data_dir, train=False, random_seed=random_seed)
     test_loader = DataLoader(test_set, 1, shuffle=False)
     models = {'GNN': ClassifierMutagenicity(latent_dim)}
-    attr_methods = {'TracIn': GraphTracIn, 'Representation Similarity': GraphRepresentationSimilarity,
-                    'SimplEx': GraphSimplEx,}
+    attr_methods = {'Influence Functions': GraphInfluenceFunctions, 'TracIn': GraphTracIn,
+                    'Representation Similarity': GraphRepresentationSimilarity, 'SimplEx': GraphSimplEx,}
     model_dir = model_dir/model_name
     save_dir = model_dir/'example_importance'
     if not save_dir.exists():
@@ -122,7 +122,7 @@ def example_importance(
             logging.info(f'Now working with {attr_name} explainer')
             model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
             if attr_name in {'TracIn', 'Influence Functions'}:
-                ex_importance = attr_methods[attr_name](model, train_loader, train_loader=train_loader_replacement,
+                ex_importance = attr_methods[attr_name](model, train_loader, train_sampler=train_loader_replacement,
                                                         loss_function=F.nll_loss, save_dir=save_dir/model.name,
                                                         recursion_depth=recursion_depth, device=device)
                 explanation_inv = graph_explanation_invariance(ex_importance, graph_permutation, test_loader, device, N_samp=N_samp)
