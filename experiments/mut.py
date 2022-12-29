@@ -14,7 +14,7 @@ from captum.attr import IntegratedGradients, GradientShap, FeatureAblation
 from utils.symmetries import GraphPermutation
 from interpretability.robustness import graph_model_invariance, graph_explanation_equivariance, graph_explanation_invariance
 from interpretability.feature import FeatureImportance
-from interpretability.example import GraphRepresentationSimilarity, GraphSimplEx
+from interpretability.example import GraphRepresentationSimilarity, GraphSimplEx, GraphTracIn
 from torch.utils.data import Subset, RandomSampler
 
 
@@ -91,15 +91,18 @@ def example_importance(
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     set_random_seed(random_seed)
     train_set = MutagenicityDataset(data_dir, train=True, random_seed=random_seed)
-    train_loader = DataLoader(train_set, n_train, shuffle=True)
+    train_subset = Subset(train_set, torch.randperm(len(train_set))[:n_train])
+    train_loader = DataLoader(train_subset, n_train, shuffle=False)  # Used to sample training graphs to attribute
     data_train = next(iter(train_loader))
     data_train = data_train.to(device)
+    train_loader = DataLoader(train_subset, 1, shuffle=False)  # Loss-based attributions require batch size of 1
     train_sampler = RandomSampler(train_set, replacement=True, num_samples=recursion_depth*batch_size)
     train_loader_replacement = DataLoader(train_set, batch_size, sampler=train_sampler)
     test_set = MutagenicityDataset(data_dir, train=False, random_seed=random_seed)
     test_loader = DataLoader(test_set, 1, shuffle=False)
     models = {'GNN': ClassifierMutagenicity(latent_dim)}
-    attr_methods = {'Representation Similarity': GraphRepresentationSimilarity, 'SimplEx': GraphSimplEx}
+    attr_methods = {'TracIn': GraphTracIn, 'Representation Similarity': GraphRepresentationSimilarity,
+                    'SimplEx': GraphSimplEx,}
     model_dir = model_dir/model_name
     save_dir = model_dir/'example_importance'
     if not save_dir.exists():
@@ -119,9 +122,9 @@ def example_importance(
             logging.info(f'Now working with {attr_name} explainer')
             model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
             if attr_name in {'TracIn', 'Influence Functions'}:
-                ex_importance = attr_methods[attr_name](model, data_train, train_loader=train_loader_replacement,
+                ex_importance = attr_methods[attr_name](model, train_loader, train_loader=train_loader_replacement,
                                                         loss_function=F.nll_loss, save_dir=save_dir/model.name,
-                                                        recursion_depth=recursion_depth)
+                                                        recursion_depth=recursion_depth, device=device)
                 explanation_inv = graph_explanation_invariance(ex_importance, graph_permutation, test_loader, device, N_samp=N_samp)
                 for inv_model, inv_expl in zip(model_inv, explanation_inv):
                     metrics.append([model_type, attr_name, inv_model.item(), inv_expl.item()])

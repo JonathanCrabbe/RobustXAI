@@ -7,6 +7,7 @@ from torch.utils.data import TensorDataset, DataLoader
 from torch_geometric.data import Data as GraphData
 from pathlib import Path
 from utils.misc import direct_sum
+from tqdm import tqdm
 
 
 class ExampleBasedExplainer(nn.Module, ABC):
@@ -208,7 +209,7 @@ class InfluenceFunctions(ExampleBasedExplainer):
 
 
 class GraphExampleBasedExplainer(nn.Module, ABC):
-    def __init__(self, model: nn.Module, data_train: GraphData, **kwargs):
+    def __init__(self, model: nn.Module, data_train: GraphData or DataLoader, **kwargs):
         super().__init__()
         self.model = model
         self.data_train = data_train
@@ -275,3 +276,50 @@ class GraphSimplEx(GraphExampleBasedExplainer):
             error.backward()
             optimizer.step()
         return torch.softmax(preweights, dim=-1).detach().cpu()
+
+
+class GraphTracIn(GraphExampleBasedExplainer):
+    def __init__(self, model: nn.Module, data_train: DataLoader, loss_function: callable, save_dir: Path,
+                 device: torch.device, **kwargs):
+        super().__init__(model, data_train)
+        self.last_layer = model.last_layer()
+        self.save_dir = save_dir/'tracin'
+        self.loss_function = loss_function
+        self.checkpoints = model.checkpoints_files
+        self.device = device
+        self.train_grads = False
+        if not self.save_dir.exists():
+            os.makedirs(self.save_dir)
+
+    def forward(self, data: GraphData):
+        if not self.train_grads:
+            self.compute_train_grads()
+        attribution = torch.zeros((1, len(self.data_train.dataset)))
+        test_grad = None
+        data = data.to(self.device)
+        for checkpoint in self.checkpoints:
+            self.model.load_state_dict(torch.load(checkpoint), strict=False)
+            test_loss = self.loss_function(self.model(data.x, data.edge_index, data.batch), data.y)
+            if test_grad is not None:
+                test_grad += direct_sum(torch.autograd.grad(test_loss, self.last_layer.parameters(), create_graph=True))
+            else:
+                test_grad = direct_sum(torch.autograd.grad(test_loss, self.last_layer.parameters(), create_graph=True))
+        test_grad = test_grad.detach().cpu()
+        for train_idx in range(len(self.data_train.dataset)):
+            train_grad = torch.load(self.save_dir/f"train_grad{train_idx}.pt")
+            attribution[0, train_idx] = torch.dot(train_grad, test_grad)
+        return attribution
+
+    def compute_train_grads(self) -> None:
+        for idx, data in tqdm(enumerate(self.data_train), leave=False, unit='train example'):
+            data = data.to(self.device)
+            grad = None
+            for checkpoint in self.checkpoints:
+                self.model.load_state_dict(torch.load(checkpoint), strict=False)
+                loss = self.loss_function(self.model(data.x, data.edge_index, data.batch), data.y)
+                if grad is not None:
+                    grad += direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True))
+                else:
+                    grad = direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True))
+            torch.save(grad.detach().cpu(), self.save_dir/f"train_grad{idx}.pt")
+        self.train_grads = True
