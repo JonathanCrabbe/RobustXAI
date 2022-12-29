@@ -3,6 +3,7 @@ import os
 import logging
 import argparse
 import pandas as pd
+import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
 from datasets.loaders import MutagenicityDataset
 from models.graphs import ClassifierMutagenicity
@@ -11,9 +12,10 @@ from utils.misc import set_random_seed
 from utils.plots import robustness_plots
 from captum.attr import IntegratedGradients, GradientShap, FeatureAblation
 from utils.symmetries import GraphPermutation
-from interpretability.robustness import graph_model_invariance, graph_explanation_equivariance
+from interpretability.robustness import graph_model_invariance, graph_explanation_equivariance, graph_explanation_invariance
 from interpretability.feature import FeatureImportance
-from torch.utils.data import Subset
+from interpretability.example import GraphRepresentationSimilarity, GraphSimplEx
+from torch.utils.data import Subset, RandomSampler
 
 
 def train_mut_model(random_seed: int, latent_dim: int, batch_size: int, model_name: str = "model",
@@ -74,16 +76,80 @@ def feature_importance(
         robustness_plots(save_dir, 'mut', 'feature_importance')
 
 
+def example_importance(
+    random_seed: int,
+    latent_dim: int,
+    batch_size: int,
+    plot: bool,
+    model_name: str = "model",
+    model_dir: Path = Path.cwd() / f"results/mut/",
+    data_dir: Path = Path.cwd() / "datasets/mut",
+    n_train: int = 100,
+    recursion_depth: int = 100,
+    N_samp: int = 1
+) -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    set_random_seed(random_seed)
+    train_set = MutagenicityDataset(data_dir, train=True, random_seed=random_seed)
+    train_loader = DataLoader(train_set, n_train, shuffle=True)
+    data_train = next(iter(train_loader))
+    data_train = data_train.to(device)
+    train_sampler = RandomSampler(train_set, replacement=True, num_samples=recursion_depth*batch_size)
+    train_loader_replacement = DataLoader(train_set, batch_size, sampler=train_sampler)
+    test_set = MutagenicityDataset(data_dir, train=False, random_seed=random_seed)
+    test_loader = DataLoader(test_set, 1, shuffle=False)
+    models = {'GNN': ClassifierMutagenicity(latent_dim)}
+    attr_methods = {'Representation Similarity': GraphRepresentationSimilarity, 'SimplEx': GraphSimplEx}
+    model_dir = model_dir/model_name
+    save_dir = model_dir/'example_importance'
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+    graph_permutation = GraphPermutation()
+    metrics = []
+    for model_type in models:
+        logging.info(f'Now working with {model_type} classifier')
+        model = models[model_type]
+        model.load_metadata(model_dir)
+        model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
+        model.to(device).eval()
+        model_inv = graph_model_invariance(model, graph_permutation, test_loader, device, N_samp=N_samp)
+        logging.info(f'Model invariance: {torch.mean(model_inv):.3g}')
+        model_layers = {'Lin1': model.lin1}
+        for attr_name in attr_methods:
+            logging.info(f'Now working with {attr_name} explainer')
+            model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
+            if attr_name in {'TracIn', 'Influence Functions'}:
+                ex_importance = attr_methods[attr_name](model, data_train, train_loader=train_loader_replacement,
+                                                        loss_function=F.nll_loss, save_dir=save_dir/model.name,
+                                                        recursion_depth=recursion_depth)
+                explanation_inv = graph_explanation_invariance(ex_importance, graph_permutation, test_loader, device, N_samp=N_samp)
+                for inv_model, inv_expl in zip(model_inv, explanation_inv):
+                    metrics.append([model_type, attr_name, inv_model.item(), inv_expl.item()])
+                logging.info(f'Explanation invariance: {torch.mean(explanation_inv):.3g}')
+            else:
+                for layer_name in model_layers:
+                    ex_importance = attr_methods[attr_name](model, data_train, layer=model_layers[layer_name])
+                    explanation_inv = graph_explanation_invariance(ex_importance, graph_permutation, test_loader, device, N_samp=N_samp)
+                    ex_importance.remove_hook()
+                    for inv_model, inv_expl in zip(model_inv, explanation_inv):
+                        metrics.append([model_type, f'{attr_name}-{layer_name}', inv_model.item(), inv_expl.item()])
+                    logging.info(f'Explanation invariance for {layer_name}: {torch.mean(explanation_inv):.3g}')
+    metrics_df = pd.DataFrame(data=metrics, columns=['Model Type', 'Explanation', 'Model Invariance', 'Explanation Invariance'])
+    metrics_df.to_csv(save_dir/'metrics.csv', index=False)
+    if plot:
+        robustness_plots(save_dir, 'mut', 'example_importance')
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
     parser.add_argument("--name", type=str, default="feature_importance")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--batch_size", type=int, default=300)
+    parser.add_argument("--batch_size", type=int, default=500)
     parser.add_argument("--latent_dim", type=int, default=32)
     parser.add_argument("--train", action="store_true")
     parser.add_argument("--plot", action="store_true")
-    parser.add_argument("--n_test", type=int, default=1000)
+    parser.add_argument("--N_samp", type=int, default=1)
     args = parser.parse_args()
     model_name = f"cnn{args.latent_dim}_seed{args.seed}"
     if args.train:
@@ -91,3 +157,5 @@ if __name__ == "__main__":
     match args.name:
         case 'feature_importance':
             feature_importance(args.seed, args.latent_dim, args.plot, model_name)
+        case 'example_importance':
+            example_importance(args.seed, args.latent_dim, args.batch_size, args.plot, model_name, N_samp=args.N_samp)

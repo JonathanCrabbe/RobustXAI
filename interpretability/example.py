@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from abc import ABC, abstractmethod
 from torch.utils.data import TensorDataset, DataLoader
+from torch_geometric.data import Data as GraphData
 from pathlib import Path
 from utils.misc import direct_sum
 
@@ -206,5 +207,71 @@ class InfluenceFunctions(ExampleBasedExplainer):
         return HVP_
 
 
+class GraphExampleBasedExplainer(nn.Module, ABC):
+    def __init__(self, model: nn.Module, data_train: GraphData, **kwargs):
+        super().__init__()
+        self.model = model
+        self.data_train = data_train
+
+    @abstractmethod
+    def forward(self, data: GraphData):
+        ...
 
 
+class GraphRepresentationSimilarity(GraphExampleBasedExplainer):
+    def __init__(self, model: nn.Module, data_train: GraphData, layer: nn.Module, **kwargs):
+        super().__init__(model, data_train)
+        self.H = torch.empty(0)
+
+        def hook(module, input, output):
+            self.H = output.flatten(start_dim=1).detach()
+
+        self.handle = layer.register_forward_hook(hook)
+        self.model(data_train.x, data_train.edge_index, data_train.batch)
+        self.H_train = self.H.clone()
+
+    def remove_hook(self):
+        self.handle.remove()
+
+    def forward(self, data: GraphData) -> torch.Tensor:
+        self.model(data.x, data.edge_index, data.batch)
+        attribution = F.cosine_similarity(self.H_train.unsqueeze(0), self.H.unsqueeze(1), dim=-1).cpu()
+        return attribution
+
+
+class GraphSimplEx(GraphExampleBasedExplainer):
+    def __init__(self, model: nn.Module,  data_train: GraphData, layer: nn.Module, **kwargs):
+        super().__init__(model, data_train)
+        self.H = torch.empty(0)
+
+        def hook(module, input, output):
+            self.H = output.flatten(start_dim=1).detach()
+
+        self.handle = layer.register_forward_hook(hook)
+        self.model(data_train.x, data_train.edge_index, data_train.batch)
+        self.H_train = self.H.clone()
+
+    def remove_hook(self):
+        self.handle.remove()
+
+    def forward(self, data: GraphData) -> torch.Tensor:
+        self.model(data.x, data.edge_index, data.batch)
+        attribution = self.compute_weights(self.H, self.H_train)
+        return attribution
+
+    @staticmethod
+    def compute_weights(
+            H: torch.Tensor,
+            H_train: torch.Tensor,
+            n_epoch: int = 1000,
+    ) -> torch.Tensor:
+        preweights = torch.zeros((len(H), len(H_train)), requires_grad=True, device=H_train.device)
+        optimizer = torch.optim.Adam([preweights])
+        for epoch in range(n_epoch):
+            optimizer.zero_grad()
+            weights = F.softmax(preweights, dim=-1)
+            H_approx = torch.einsum("ij,jk->ik", weights, H_train)
+            error = ((H_approx - H) ** 2).sum()
+            error.backward()
+            optimizer.step()
+        return torch.softmax(preweights, dim=-1).detach().cpu()

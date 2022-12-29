@@ -123,6 +123,25 @@ def explanation_invariance_exact(explainer: nn.Module, symmetry: Symmetry, data_
     return invariance_scores
 
 
+def graph_explanation_invariance(explanation: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
+                                 similarity: callable = cos_similarity, N_samp: int = 50, reduce: bool = True) -> torch.Tensor:
+    invariance_scores = torch.zeros(len(data_loader.dataset), N_samp)
+    for sample_id in tqdm(range(N_samp), leave=False, unit='MC sample'):
+        sample_scores = []
+        for data in tqdm(data_loader, leave=False, unit='graph'):
+            data = data.to(device)
+            symmetry.sample_symmetry(data)
+            new_data = symmetry(data)
+            e1 = explanation(data)
+            e2 = explanation(new_data)
+            sample_scores.append(similarity(e1, e2).detach().cpu())
+        sample_scores = torch.cat(sample_scores)
+        invariance_scores[:, sample_id] = sample_scores
+    if reduce:
+        invariance_scores = torch.mean(invariance_scores, dim=-1)
+    return invariance_scores
+
+
 def explanation_equivariance(explainer: nn.Module, symmetry: Symmetry, data_loader: DataLoader, device: torch.device,
                              similarity: callable = cos_similarity, N_samp: int = 50, reduce: bool = True) -> torch.Tensor:
     equivariance_scores = torch.zeros(len(data_loader.dataset), N_samp)

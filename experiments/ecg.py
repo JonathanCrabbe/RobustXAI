@@ -161,6 +161,7 @@ def example_importance(
                 for layer_name in model_layers:
                     ex_importance = attr_methods[attr_name](model, X_train, Y_train=Y_train, layer=model_layers[layer_name])
                     explanation_inv = explanation_invariance_exact(ex_importance, translation, test_loader, device)
+                    ex_importance.remove_hook()
                     for inv_model, inv_expl in zip(model_inv, explanation_inv):
                         metrics.append([model_type, f'{attr_name}-{layer_name}', inv_model.item(), inv_expl.item()])
                     logging.info(f'Explanation invariance for {layer_name}: {torch.mean(explanation_inv):.3g}')
