@@ -3,6 +3,7 @@ import logging
 import torch
 import pandas as pd
 import numpy as np
+import networkx as nx
 from pathlib import Path
 from torch.utils.data import Dataset, SubsetRandomSampler
 from imblearn.over_sampling import SMOTE
@@ -112,7 +113,12 @@ class MutagenicityDataset(ConceptDataset, Dataset):
 
     def generate_concept_dataset(self, concept_id: int, concept_set_size: int) -> tuple:
         for graph in iter(self.dataset):
-            print(graph)
+            molecule = to_molecule(graph).to_undirected()
+            atoms = nx.get_node_attributes(molecule, 'name')
+            for node1 in molecule.nodes:
+                for node2 in molecule.adj[node1]:
+                    print(atoms[node1], atoms[node2])
+            break
 
     def concept_names(self):
         ...

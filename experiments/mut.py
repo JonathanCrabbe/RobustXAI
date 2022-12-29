@@ -10,10 +10,10 @@ from models.graphs import ClassifierMutagenicity
 from pathlib import Path
 from utils.misc import set_random_seed
 from utils.plots import robustness_plots
-from captum.attr import IntegratedGradients, GradientShap, FeatureAblation
+from captum.attr import IntegratedGradients, GradientShap
 from utils.symmetries import GraphPermutation
 from interpretability.robustness import graph_model_invariance, graph_explanation_equivariance, graph_explanation_invariance
-from interpretability.feature import FeatureImportance
+from interpretability.feature import FeatureImportance, GraphFeatureAblation
 from interpretability.example import GraphRepresentationSimilarity, GraphSimplEx, GraphTracIn, GraphInfluenceFunctions
 from torch.utils.data import Subset, RandomSampler
 
@@ -41,6 +41,7 @@ def feature_importance(
     model_name: str = "model",
     model_dir: Path = Path.cwd() / f"results/mut/",
     data_dir: Path = Path.cwd() / "datasets/mut",
+    N_samp: int = 1
 ) -> None:
 
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -52,7 +53,7 @@ def feature_importance(
     model.load_metadata(model_dir)
     model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
     model.to(device).eval()
-    attr_methods = {'Feature Ablation': FeatureAblation, 'Gradient Shap': GradientShap,
+    attr_methods = {'Feature Ablation': GraphFeatureAblation, 'Gradient Shap': GradientShap,
                     'Integrated Gradients': IntegratedGradients}
     save_dir = model_dir/'feature_importance'
     if not save_dir.exists():
@@ -60,12 +61,12 @@ def feature_importance(
     graph_perm = GraphPermutation()
     metrics = []
     logging.info(f'Now working with Mutagenicity classifier')
-    model_inv = graph_model_invariance(model, graph_perm, test_loader, device, N_samp=1)
+    model_inv = graph_model_invariance(model, graph_perm, test_loader, device, N_samp=N_samp)
     logging.info(f'Model invariance: {torch.mean(model_inv).item():.3g}')
     for attr_name in attr_methods:
         logging.info(f'Now working with {attr_name}')
         feat_importance = FeatureImportance(attr_methods[attr_name](model))
-        explanation_equiv = graph_explanation_equivariance(feat_importance, graph_perm, test_loader, device, N_samp=1)
+        explanation_equiv = graph_explanation_equivariance(feat_importance, graph_perm, test_loader, device, N_samp=N_samp)
         logging.info(f'Explanation equivariance: {torch.mean(explanation_equiv):.3g}')
         for inv, equiv in zip(model_inv, explanation_equiv):
             metrics.append(['GNN', attr_name, inv.item(), equiv.item()])
@@ -143,6 +144,57 @@ def example_importance(
         robustness_plots(save_dir, 'mut', 'example_importance')
 
 
+def concept_importance(
+    random_seed: int,
+    latent_dim: int,
+    batch_size: int,
+    plot: bool,
+    model_name: str = "model",
+    model_dir: Path = Path.cwd() / f"results/mut/",
+    data_dir: Path = Path.cwd() / "datasets/mut",
+    concept_set_size: int = 100,
+    N_samp: int = 1
+) -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    set_random_seed(random_seed)
+    train_set = MutagenicityDataset(data_dir, train=True, random_seed=random_seed)
+    test_set = MutagenicityDataset(data_dir, train=False, random_seed=random_seed)
+    test_set.generate_concept_dataset(0, concept_set_size)
+    test_loader = DataLoader(test_set, batch_size)
+    models = {'GNN': ClassifierMutagenicity(latent_dim)}
+    attr_methods = {'CAV': CAV, 'CAR': CAR}
+    model_dir = model_dir/model_name
+    save_dir = model_dir/'concept_importance'
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+    graph_permutation = GraphPermutation()
+    metrics = []
+    for model_type in models:
+        logging.info(f'Now working with {model_type} classifier')
+        model = models[model_type]
+        model.load_metadata(model_dir)
+        model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
+        model.to(device).eval()
+        model_inv = model_invariance_exact(model, translation, test_loader, device)
+        logging.info(f'Model invariance: {torch.mean(model_inv):.3g}')
+        model_layers = {'Lin1': model.fc1, 'Conv3': model.cnn3}
+        for layer_name, attr_name in itertools.product(model_layers, attr_methods):
+            logging.info(f'Now working with {attr_name} explainer on layer {layer_name}')
+            conc_importance = attr_methods[attr_name](model, train_set, n_classes=2, layer=model_layers[layer_name])
+            conc_importance.fit(device, concept_set_size)
+            explanation_inv = explanation_invariance_exact(conc_importance, translation, test_loader, device, similarity=accuracy)
+            conc_importance.remove_hook()
+            for inv_model, inv_expl in zip(model_inv, explanation_inv):
+                metrics.append([model_type, f'{attr_name}-{layer_name}', inv_model.item(), inv_expl.item()])
+            logging.info(f'Explanation invariance: {torch.mean(explanation_inv):.3g}')
+    metrics_df = pd.DataFrame(data=metrics, columns=['Model Type', 'Explanation', 'Model Invariance', 'Explanation Invariance'])
+    metrics_df.to_csv(save_dir/'metrics.csv', index=False)
+    if plot:
+        robustness_plots(save_dir, 'ecg', 'concept_importance')
+        relaxing_invariance_plots(save_dir, 'ecg', 'concept_importance')
+
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
@@ -152,13 +204,17 @@ if __name__ == "__main__":
     parser.add_argument("--latent_dim", type=int, default=32)
     parser.add_argument("--train", action="store_true")
     parser.add_argument("--plot", action="store_true")
-    parser.add_argument("--N_samp", type=int, default=1)
+    parser.add_argument("--N_samp", type=int, default=50)
     args = parser.parse_args()
-    model_name = f"cnn{args.latent_dim}_seed{args.seed}"
+    model_name = f"gnn{args.latent_dim}_seed{args.seed}"
     if args.train:
         train_mut_model(args.seed, args.latent_dim, args.batch_size, model_name=model_name)
     match args.name:
         case 'feature_importance':
-            feature_importance(args.seed, args.latent_dim, args.plot, model_name)
+            feature_importance(args.seed, args.latent_dim, args.plot, model_name, N_samp=args.N_samp)
         case 'example_importance':
             example_importance(args.seed, args.latent_dim, args.batch_size, args.plot, model_name, N_samp=args.N_samp)
+        case 'concept_importance':
+            concept_importance(args.seed, args.latent_dim, args.batch_size, args.plot, model_name, N_samp=args.N_samp)
+        case other:
+            raise ValueError('Invalid experiment name.')
