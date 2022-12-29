@@ -194,7 +194,6 @@ def concept_importance(
         relaxing_invariance_plots(save_dir, 'ecg', 'concept_importance')
 
 
-
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()

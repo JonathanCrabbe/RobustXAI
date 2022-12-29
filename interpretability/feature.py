@@ -3,6 +3,7 @@ import torch.nn as nn
 from captum.attr import Attribution, GradientShap, IntegratedGradients, Saliency, Occlusion, FeatureAblation, FeaturePermutation
 from torch_geometric.data import Data as GraphData
 
+
 class FeatureImportance(nn.Module):
     def __init__(self, attr_method: Attribution):
         super().__init__()

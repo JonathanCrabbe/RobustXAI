@@ -10,6 +10,7 @@ from imblearn.over_sampling import SMOTE
 from abc import ABC, abstractmethod
 from torch_geometric.datasets import TUDataset
 from utils.misc import to_molecule
+from utils.plots import draw_molecule
 
 
 class ConceptDataset(ABC, Dataset):
@@ -114,11 +115,20 @@ class MutagenicityDataset(ConceptDataset, Dataset):
     def generate_concept_dataset(self, concept_id: int, concept_set_size: int) -> tuple:
         for graph in iter(self.dataset):
             molecule = to_molecule(graph).to_undirected()
-            atoms = nx.get_node_attributes(molecule, 'name')
-            for node1 in molecule.nodes:
-                for node2 in molecule.adj[node1]:
-                    print(atoms[node1], atoms[node2])
-            break
+            print(self.has_nitroso(molecule))
+            if self.has_nitroso(molecule):
+                draw_molecule(molecule, draw_edge_labels=True, edge_mask=nx.get_edge_attributes(molecule, 'valence'))
 
     def concept_names(self):
         ...
+
+    @staticmethod
+    def has_nitroso(molecule: nx.Graph) -> bool:
+        atoms = nx.get_node_attributes(molecule, 'name')
+        valences = nx.get_edge_attributes(molecule, 'valence')
+        for node1 in molecule.nodes:
+            if atoms[node1] == 'N':
+                for node2 in molecule.adj[node1]:
+                    if atoms[node2] == 'O' and valences[node1, node2] == 2:
+                        return True
+        return False
