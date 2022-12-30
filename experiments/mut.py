@@ -4,6 +4,7 @@ import logging
 import argparse
 import pandas as pd
 import torch.nn.functional as F
+import itertools
 from torch_geometric.loader import DataLoader
 from datasets.loaders import MutagenicityDataset
 from models.graphs import ClassifierMutagenicity
@@ -12,9 +13,11 @@ from utils.misc import set_random_seed
 from utils.plots import robustness_plots
 from captum.attr import IntegratedGradients, GradientShap
 from utils.symmetries import GraphPermutation
-from interpretability.robustness import graph_model_invariance, graph_explanation_equivariance, graph_explanation_invariance
+from interpretability.robustness import graph_model_invariance, graph_explanation_equivariance,\
+    graph_explanation_invariance, accuracy
 from interpretability.feature import FeatureImportance, GraphFeatureAblation
 from interpretability.example import GraphRepresentationSimilarity, GraphSimplEx, GraphTracIn, GraphInfluenceFunctions
+from interpretability.concept import GraphCAR, GraphCAV
 from torch.utils.data import Subset, RandomSampler
 
 
@@ -159,10 +162,10 @@ def concept_importance(
     set_random_seed(random_seed)
     train_set = MutagenicityDataset(data_dir, train=True, random_seed=random_seed)
     test_set = MutagenicityDataset(data_dir, train=False, random_seed=random_seed)
-    test_set.generate_concept_dataset(0, concept_set_size)
-    test_loader = DataLoader(test_set, batch_size)
+    train_set.generate_concept_dataset(0, concept_set_size)
+    test_loader = DataLoader(test_set, 1, shuffle=False)
     models = {'GNN': ClassifierMutagenicity(latent_dim)}
-    attr_methods = {'CAV': CAV, 'CAR': CAR}
+    attr_methods = {'CAV': GraphCAV, 'CAR': GraphCAR}
     model_dir = model_dir/model_name
     save_dir = model_dir/'concept_importance'
     if not save_dir.exists():
@@ -175,14 +178,15 @@ def concept_importance(
         model.load_metadata(model_dir)
         model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
         model.to(device).eval()
-        model_inv = model_invariance_exact(model, translation, test_loader, device)
+        model_inv = graph_model_invariance(model, graph_permutation, test_loader, device, N_samp=N_samp)
         logging.info(f'Model invariance: {torch.mean(model_inv):.3g}')
-        model_layers = {'Lin1': model.fc1, 'Conv3': model.cnn3}
+        model_layers = {'Lin1': model.lin1}
         for layer_name, attr_name in itertools.product(model_layers, attr_methods):
             logging.info(f'Now working with {attr_name} explainer on layer {layer_name}')
             conc_importance = attr_methods[attr_name](model, train_set, n_classes=2, layer=model_layers[layer_name])
             conc_importance.fit(device, concept_set_size)
-            explanation_inv = explanation_invariance_exact(conc_importance, translation, test_loader, device, similarity=accuracy)
+            explanation_inv = graph_explanation_invariance(conc_importance, graph_permutation, test_loader, device,
+                                                           similarity=accuracy, N_samp=N_samp)
             conc_importance.remove_hook()
             for inv_model, inv_expl in zip(model_inv, explanation_inv):
                 metrics.append([model_type, f'{attr_name}-{layer_name}', inv_model.item(), inv_expl.item()])
@@ -190,8 +194,7 @@ def concept_importance(
     metrics_df = pd.DataFrame(data=metrics, columns=['Model Type', 'Explanation', 'Model Invariance', 'Explanation Invariance'])
     metrics_df.to_csv(save_dir/'metrics.csv', index=False)
     if plot:
-        robustness_plots(save_dir, 'ecg', 'concept_importance')
-        relaxing_invariance_plots(save_dir, 'ecg', 'concept_importance')
+        robustness_plots(save_dir, 'mut', 'concept_importance')
 
 
 if __name__ == "__main__":

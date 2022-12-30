@@ -113,14 +113,22 @@ class MutagenicityDataset(ConceptDataset, Dataset):
         return self.dataset.get(idx)
 
     def generate_concept_dataset(self, concept_id: int, concept_set_size: int) -> tuple:
+        concept_detectors = {'Nitroso': self.is_nitroso, 'Aliphatic Halide': self.is_aliphatic_halide,
+                             'Azo Type': self.is_azo_type, 'Nitro Type': self.is_nitro_type}
+        concept_detector = concept_detectors[self.concept_names()[concept_id]]
+        mask = []
         for graph in iter(self.dataset):
             molecule = to_molecule(graph)
-            print(self.is_azo_type(molecule))
-            if self.is_azo_type(molecule):
-                draw_molecule(molecule, draw_edge_labels=True, edge_mask=nx.get_edge_attributes(molecule, 'valence'))
+            mask.append(concept_detector(molecule))
+        mask = torch.tensor(mask)
+        positive_set = self.dataset[mask][:concept_set_size]
+        negative_set = self.dataset[~mask][:concept_set_size]
+        concept_set = positive_set+negative_set
+        C = torch.concatenate((torch.ones(concept_set_size), torch.zeros(concept_set_size)), 0)
+        return concept_set, C
 
     def concept_names(self):
-        ...
+        return ['Nitroso', 'Aliphatic Halide', 'Azo Type', 'Nitro Type']
 
     @staticmethod
     def is_nitroso(molecule: nx.Graph) -> bool:
@@ -134,7 +142,7 @@ class MutagenicityDataset(ConceptDataset, Dataset):
         return False
 
     @staticmethod
-    def is_alipathic_halide(molecule: nx.Graph) -> bool:
+    def is_aliphatic_halide(molecule: nx.Graph) -> bool:
         atoms = nx.get_node_attributes(molecule, 'name')
         for node1 in molecule.nodes:
             if atoms[node1] in {'Cl', 'Br', 'I'}:
@@ -151,3 +159,24 @@ class MutagenicityDataset(ConceptDataset, Dataset):
                     if atoms[node2] == 'N' and valences[node1, node2] == 2:
                         return True
         return False
+
+    @staticmethod
+    def is_nitro_type(molecule: nx.Graph) -> bool:
+        atoms = nx.get_node_attributes(molecule, 'name')
+        valences = nx.get_edge_attributes(molecule, 'valence')
+        for node1 in molecule.nodes:
+            if atoms[node1] == 'N':
+                has_single_NO = False
+                has_double_NO = False
+                for node2 in nx.neighbors(molecule, node1):
+                    if atoms[node2] == 'O':
+                        match valences[node1, node2]:
+                            case 1:
+                                has_single_NO = True
+                            case 2:
+                                has_double_NO = True
+
+                if has_single_NO and has_double_NO:
+                    return True
+        return False
+
