@@ -124,7 +124,7 @@ class MutagenicityDataset(ConceptDataset, Dataset):
         positive_set = self.dataset[mask][:concept_set_size]
         negative_set = self.dataset[~mask][:concept_set_size]
         concept_set = positive_set+negative_set
-        C = torch.concatenate((torch.ones(concept_set_size), torch.zeros(concept_set_size)), 0)
+        C = torch.concatenate((torch.ones(len(positive_set)), torch.zeros(len(negative_set))), 0)
         return concept_set, C
 
     def concept_names(self):

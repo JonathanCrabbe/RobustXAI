@@ -155,7 +155,7 @@ def concept_importance(
     model_name: str = "model",
     model_dir: Path = Path.cwd() / f"results/mut/",
     data_dir: Path = Path.cwd() / "datasets/mut",
-    concept_set_size: int = 100,
+    concept_set_size: int = 500,
     N_samp: int = 1
 ) -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -165,7 +165,7 @@ def concept_importance(
     train_set.generate_concept_dataset(0, concept_set_size)
     test_loader = DataLoader(test_set, 1, shuffle=False)
     models = {'GNN': ClassifierMutagenicity(latent_dim)}
-    attr_methods = {'CAV': GraphCAV, 'CAR': GraphCAR}
+    attr_methods = {'CAR': GraphCAR, 'CAV': GraphCAV,}
     model_dir = model_dir/model_name
     save_dir = model_dir/'concept_importance'
     if not save_dir.exists():
@@ -184,7 +184,10 @@ def concept_importance(
         for layer_name, attr_name in itertools.product(model_layers, attr_methods):
             logging.info(f'Now working with {attr_name} explainer on layer {layer_name}')
             conc_importance = attr_methods[attr_name](model, train_set, n_classes=2, layer=model_layers[layer_name])
-            conc_importance.fit(device, concept_set_size)
+            conc_importance.fit(device, concept_set_size, batch_size=batch_size)
+            concept_acc = conc_importance.concept_accuracy(test_set, device, batch_size=batch_size)
+            for concept_name in concept_acc:
+                logging.info(f'Concept {concept_name} accuracy: {concept_acc[concept_name]:.2g}')
             explanation_inv = graph_explanation_invariance(conc_importance, graph_permutation, test_loader, device,
                                                            similarity=accuracy, N_samp=N_samp)
             conc_importance.remove_hook()

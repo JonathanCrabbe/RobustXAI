@@ -11,6 +11,7 @@ from sklearn.linear_model import SGDClassifier
 from datasets.loaders import ConceptDataset
 from torch_geometric.data import Data as GraphData
 from torch_geometric.loader import DataLoader as GraphDataLoader
+from sklearn.metrics import accuracy_score
 
 
 class ConceptExplainer(ABC, nn.Module):
@@ -81,6 +82,17 @@ class CAR(ConceptExplainer):
             C_pred[:, concept_id] = torch.from_numpy(classifier.predict(H_proj))
         return C_pred
 
+    def concept_accuracy(self, test_set: ConceptDataset, device: torch.device, concept_set_size: int = 1000) -> dict:
+        accuracies = {}
+        for concept_id, (encoder, classifier) in enumerate(zip(self.encoders, self.classifiers)):
+            X_test, C_test = test_set.generate_concept_dataset(concept_id, concept_set_size)
+            self.model(X_test.to(device))
+            H_test = self.H.copy()
+            H_proj = encoder.transform(H_test)
+            C_pred = classifier.predict(H_proj)
+            accuracies[test_set.concept_names()[concept_id]] = accuracy_score(C_test, C_pred)
+        return accuracies
+
 
 class CAV(ConceptExplainer):
     def __init__(self, model: nn.Module, dataset: ConceptDataset, layer: nn.Module, n_classes: int, **kwargs):
@@ -122,6 +134,16 @@ class CAV(ConceptExplainer):
         for classifier in self.classifiers:
             cavs.append(torch.tensor(classifier.coef_).float().reshape(1, -1))
         return torch.cat(cavs, dim=0)
+
+    def concept_accuracy(self, test_set: ConceptDataset, device: torch.device, concept_set_size: int = 1000) -> dict:
+        accuracies = {}
+        for concept_id, classifier in enumerate(self.classifiers):
+            X_test, C_test = test_set.generate_concept_dataset(concept_id, concept_set_size)
+            self.model(X_test.to(device))
+            H_test = self.H.copy()
+            C_pred = classifier.predict(H_test)
+            accuracies[test_set.concept_names()[concept_id]] = accuracy_score(C_test, C_pred)
+        return accuracies
 
 
 class GraphConceptExplainer(ABC, nn.Module):
@@ -198,6 +220,23 @@ class GraphCAR(GraphConceptExplainer):
             C_pred[:, concept_id] = torch.from_numpy(classifier.predict(H_proj))
         return C_pred
 
+    def concept_accuracy(self, test_set: ConceptDataset, device: torch.device,
+                         concept_set_size: int = 1000, batch_size: int = 200) -> dict:
+        accuracies = {}
+        for concept_id, (encoder, classifier) in enumerate(zip(self.encoders, self.classifiers)):
+            dataset_test, C_test = test_set.generate_concept_dataset(concept_id, concept_set_size)
+            test_loader = GraphDataLoader(dataset_test, batch_size, shuffle=False)
+            H_test = []
+            for data_test in test_loader:
+                data_test = data_test.to(device)
+                self.model(data_test.x, data_test.edge_index, data_test.batch)
+                H_test.append(self.H.copy())
+            H_test = np.concatenate(H_test, axis=0)
+            H_proj = encoder.transform(H_test)
+            C_pred = classifier.predict(H_proj)
+            accuracies[test_set.concept_names()[concept_id]] = accuracy_score(C_test, C_pred)
+        return accuracies
+
 
 class GraphCAV(GraphConceptExplainer):
     def __init__(self, model: nn.Module, dataset: ConceptDataset, layer: nn.Module, n_classes: int, **kwargs):
@@ -234,3 +273,19 @@ class GraphCAV(GraphConceptExplainer):
         for classifier in self.classifiers:
             cavs.append(torch.tensor(classifier.coef_).float().reshape(1, -1))
         return torch.cat(cavs, dim=0)
+
+    def concept_accuracy(self, test_set: ConceptDataset, device: torch.device,
+                         concept_set_size: int = 1000, batch_size: int = 200) -> dict:
+        accuracies = {}
+        for concept_id, classifier in enumerate(self.classifiers):
+            dataset_test, C_test = test_set.generate_concept_dataset(concept_id, concept_set_size)
+            test_loader = GraphDataLoader(dataset_test, batch_size, shuffle=False)
+            H_test = []
+            for data_test in test_loader:
+                data_test = data_test.to(device)
+                self.model(data_test.x, data_test.edge_index, data_test.batch)
+                H_test.append(self.H.copy())
+            H_test = np.concatenate(H_test, axis=0)
+            C_pred = classifier.predict(H_test)
+            accuracies[test_set.concept_names()[concept_id]] = accuracy_score(C_test, C_pred)
+        return accuracies

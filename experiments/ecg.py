@@ -186,7 +186,7 @@ def concept_importance(
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     set_random_seed(random_seed)
     train_set = ECGDataset(data_dir, train=True, binarize_label=False, balance_dataset=False)
-    test_set = ECGDataset(data_dir, train=False, balance_dataset=False)
+    test_set = ECGDataset(data_dir, train=False, balance_dataset=False, binarize_label=False)
     test_subset = Subset(test_set, torch.randperm(len(test_set))[:n_test])
     test_loader = DataLoader(test_subset, batch_size)
     models = {'All-CNN': AllCNN(latent_dim, f'{model_name}_allcnn'),
@@ -212,6 +212,9 @@ def concept_importance(
             logging.info(f'Now working with {attr_name} explainer on layer {layer_name}')
             conc_importance = attr_methods[attr_name](model, train_set, n_classes=2, layer=model_layers[layer_name])
             conc_importance.fit(device, concept_set_size)
+            concept_acc = conc_importance.concept_accuracy(test_set, device, concept_set_size=concept_set_size)
+            for concept_name in concept_acc:
+                logging.info(f'Concept {concept_name} accuracy: {concept_acc[concept_name]:.2g}')
             explanation_inv = explanation_invariance_exact(conc_importance, translation, test_loader, device, similarity=accuracy)
             conc_importance.remove_hook()
             for inv_model, inv_expl in zip(model_inv, explanation_inv):
