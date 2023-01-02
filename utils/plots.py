@@ -29,6 +29,9 @@ def single_robustness_plots(plot_dir: Path, dataset: str, experiment_name: str) 
 
 
 def global_robustness_plots(experiment_name: str) -> None:
+    sns.set(font_scale=1.3)
+    sns.set_style("whitegrid")
+    sns.set_palette('colorblind')
     with open(Path.cwd()/"results_dir.json") as f:
         path_dic = json.load(f)
     global_df = []
@@ -76,15 +79,25 @@ def global_robustness_plots(experiment_name: str) -> None:
 
 
 def relaxing_invariance_plots(plot_dir: Path, dataset: str, experiment_name: str) -> None:
+    sns.set(font_scale=1.2)
+    sns.set_style("whitegrid")
+    sns.set_palette('colorblind')
     metrics_df = pd.read_csv(plot_dir/'metrics.csv')
+    metrics_df = metrics_df.drop(metrics_df[(metrics_df.Explanation == 'SimplEx-Conv3') |
+                                            (metrics_df.Explanation == 'Representation Similarity-Conv3') |
+                                            (metrics_df.Explanation == 'CAR-Conv3') |
+                                            (metrics_df.Explanation == 'CAV-Conv3')
+                                            ].index)
+    rename_dic = {'Representation Similarity-Lin1': 'Rep. Similar-Lin1'}
+    metrics_df = metrics_df.replace(rename_dic)
     y = 'Explanation Equivariance' if 'Explanation Equivariance' in metrics_df.columns else 'Explanation Invariance'
     plot_df = metrics_df.groupby(['Model Type', 'Explanation']).mean()
     plot_df[['Model Invariance CI', f'{y} CI']] = 2 * metrics_df.groupby(['Model Type', 'Explanation']).sem()
     sns.scatterplot(plot_df, x='Model Invariance', y=y, hue='Model Type', edgecolor="black", alpha=.5,
-                         style='Explanation',  markers=markers[:metrics_df['Explanation'].nunique()])
+                         style='Explanation',  markers=markers[:metrics_df['Explanation'].nunique()], s=100)
     plt.errorbar(x=plot_df['Model Invariance'], y=plot_df[y],
                  xerr=plot_df['Model Invariance CI'], yerr=plot_df[f'{y} CI'],
-                 ecolor='black', elinewidth=.7, linestyle='', capsize=.7, capthick=.7)
+                 ecolor='black', elinewidth=1.7, linestyle='', capsize=1.7, capthick=1.7)
     plt.xscale('linear')
     plt.axline((0, 0), slope=1, color="gray", linestyle='dotted')
     plt.xlim(0, 1.1)
@@ -195,7 +208,10 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, default="cnn32_seed42")
     parser.add_argument("--concept", type=str, default=None)
     args = parser.parse_args()
-    plot_path = Path.cwd()/f"results/{args.dataset}/{args.model}/{args.experiment_name}"
+    with open(Path.cwd() / "results_dir.json") as f:
+        path_dic = json.load(f)
+    dataset_full_names = {'ecg': 'Electrocardiograms', 'mut': 'Mutagenicity'}
+    plot_path = Path.cwd()/path_dic[dataset_full_names[args.dataset]]/args.experiment_name
     logging.info(f"Saving {args.plot_name} plot for {args.dataset} in {str(plot_path)}")
     match args.plot_name:
         case 'robustness':
