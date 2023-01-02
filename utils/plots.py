@@ -1,3 +1,5 @@
+import json
+import matplotlib
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -13,7 +15,7 @@ sns.set_palette('colorblind')
 markers = ["o", "s", "X", "D", "v", "p"]
 
 
-def robustness_plots(plot_dir: Path, dataset: str, experiment_name: str) -> None:
+def single_robustness_plots(plot_dir: Path, dataset: str, experiment_name: str) -> None:
     metrics_df = pd.read_csv(plot_dir/'metrics.csv')
     for model_type in metrics_df['Model Type'].unique():
         sub_df = metrics_df[metrics_df['Model Type'] == model_type]
@@ -24,6 +26,53 @@ def robustness_plots(plot_dir: Path, dataset: str, experiment_name: str) -> None
         plt.tight_layout()
         plt.savefig(plot_dir/f'{experiment_name}_{dataset}_{model_type.lower().replace(" ", "_")}.pdf')
         plt.close()
+
+
+def global_robustness_plots(experiment_name: str) -> None:
+    with open(Path.cwd()/"results_dir.json") as f:
+        path_dic = json.load(f)
+    global_df = []
+    for dataset in path_dic:
+        dataset_df = pd.read_csv(Path.cwd()/path_dic[dataset]/experiment_name/"metrics.csv")
+        dataset_df['Dataset'] = [dataset]*len(dataset_df)
+        global_df.append(dataset_df)
+    global_df = pd.concat(global_df)
+    rename_dic = {'SimplEx-Lin1': 'SimplEx-Inv', 'SimplEx-Conv3': 'SimplEx-Equiv',
+                  'Representation Similarity-Lin1': 'Rep. Similar-Inv', 'Representation Similarity-Conv3': 'Rep. Similar-Equiv',
+                  'CAR-Lin1': 'CAR-Inv', 'CAR-Conv3': 'CAR-Equiv', 'CAV-Lin1': 'CAV-Inv', 'CAV-Conv3': 'CAV-Equiv'}
+    global_df = global_df.replace(rename_dic)
+    global_df = global_df[(global_df['Model Type'] == 'All-CNN') | (global_df['Model Type'] == 'GNN')]
+    y = 'Explanation Equivariance' if 'Explanation Equivariance' in global_df.columns else 'Explanation Invariance'
+    ax = sns.boxplot(global_df, x='Dataset', hue='Explanation', y=y, showfliers=False)
+    wrap_labels(ax, 10)
+    plt.ylim(-1.1, 1.1)
+    box_patches = [patch for patch in ax.patches if type(patch) == matplotlib.patches.PathPatch]
+    if len(box_patches) == 0:  # in matplotlib older than 3.5, the boxes are stored in ax2.artists
+        box_patches = ax.artists
+    num_patches = len(box_patches)
+    lines_per_boxplot = len(ax.lines) // num_patches
+    for i, patch in enumerate(box_patches):
+        # Set the linecolor on the patch to the facecolor, and set the facecolor to None
+        col = patch.get_facecolor()
+        patch.set_edgecolor(col)
+        patch.set_facecolor('None')
+
+        # Each box has associated Line2D objects (to make the whiskers, fliers, etc.)
+        # Loop over them here, and use the same color as above
+        for line in ax.lines[i * lines_per_boxplot: (i + 1) * lines_per_boxplot]:
+            line.set_color(col)
+            line.set_mfc(col)  # facecolor of fliers
+            line.set_mec(col)  # edgecolor of fliers
+
+    # Also fix the legend
+    for legpatch in ax.legend_.get_patches():
+        col = legpatch.get_facecolor()
+        legpatch.set_edgecolor(col)
+        legpatch.set_facecolor('None')
+    sns.despine(left=True)
+    plt.tight_layout()
+    plt.savefig(Path.cwd()/f'results/{experiment_name}_global_robustness.pdf')
+    plt.close()
 
 
 def relaxing_invariance_plots(plot_dir: Path, dataset: str, experiment_name: str) -> None:
@@ -150,7 +199,9 @@ if __name__ == "__main__":
     logging.info(f"Saving {args.plot_name} plot for {args.dataset} in {str(plot_path)}")
     match args.plot_name:
         case 'robustness':
-            robustness_plots(plot_path, args.dataset, args.experiment_name)
+            single_robustness_plots(plot_path, args.dataset, args.experiment_name)
+        case 'global_robustness':
+            global_robustness_plots(args.experiment_name)
         case 'relax_invariance':
             relaxing_invariance_plots(plot_path, args.dataset, args.experiment_name)
         case 'mc_convergence':

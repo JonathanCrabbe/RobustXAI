@@ -12,7 +12,7 @@ from datasets.loaders import ECGDataset
 from models.time_series import AllCNN, StandardCNN
 from utils.symmetries import Translation1D
 from utils.misc import set_random_seed
-from utils.plots import robustness_plots, relaxing_invariance_plots, mc_convergence_plot, enforce_invariance_plot
+from utils.plots import single_robustness_plots, relaxing_invariance_plots, mc_convergence_plot, enforce_invariance_plot
 from interpretability.robustness import model_invariance, explanation_equivariance, explanation_invariance, \
     accuracy, cos_similarity, InvariantExplainer, model_invariance_exact, explanation_invariance_exact, \
     explanation_equivariance_exact
@@ -99,7 +99,7 @@ def feature_importance(
     metrics_df = pd.DataFrame(data=metrics, columns=['Model Type', 'Explanation', 'Model Invariance', 'Explanation Equivariance'])
     metrics_df.to_csv(save_dir/'metrics.csv', index=False)
     if plot:
-        robustness_plots(save_dir, 'ecg', 'feature_importance')
+        single_robustness_plots(save_dir, 'ecg', 'feature_importance')
         relaxing_invariance_plots(save_dir, 'ecg', 'feature_importance')
 
 
@@ -168,7 +168,7 @@ def example_importance(
     metrics_df = pd.DataFrame(data=metrics, columns=['Model Type', 'Explanation', 'Model Invariance', 'Explanation Invariance'])
     metrics_df.to_csv(save_dir/'metrics.csv', index=False)
     if plot:
-        robustness_plots(save_dir, 'ecg', 'example_importance')
+        single_robustness_plots(save_dir, 'ecg', 'example_importance')
         relaxing_invariance_plots(save_dir, 'ecg', 'example_importance')
 
 
@@ -223,7 +223,7 @@ def concept_importance(
     metrics_df = pd.DataFrame(data=metrics, columns=['Model Type', 'Explanation', 'Model Invariance', 'Explanation Invariance'])
     metrics_df.to_csv(save_dir/'metrics.csv', index=False)
     if plot:
-        robustness_plots(save_dir, 'ecg', 'concept_importance')
+        single_robustness_plots(save_dir, 'ecg', 'concept_importance')
         relaxing_invariance_plots(save_dir, 'ecg', 'concept_importance')
 
 

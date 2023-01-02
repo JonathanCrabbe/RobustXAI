@@ -1,0 +1,4 @@
+{
+  "Electrocardiograms": "results/ecg/cnn32_seed42",
+  "Mutagenicity": "results/mut/gnn32_seed42"
+}

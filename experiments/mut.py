@@ -10,7 +10,7 @@ from datasets.loaders import MutagenicityDataset
 from models.graphs import ClassifierMutagenicity
 from pathlib import Path
 from utils.misc import set_random_seed
-from utils.plots import robustness_plots
+from utils.plots import single_robustness_plots
 from captum.attr import IntegratedGradients, GradientShap
 from utils.symmetries import GraphPermutation
 from interpretability.robustness import graph_model_invariance, graph_explanation_equivariance,\
@@ -77,7 +77,7 @@ def feature_importance(
                               columns=['Model Type', 'Explanation', 'Model Invariance', 'Explanation Equivariance'])
     metrics_df.to_csv(save_dir / 'metrics.csv', index=False)
     if plot:
-        robustness_plots(save_dir, 'mut', 'feature_importance')
+        single_robustness_plots(save_dir, 'mut', 'feature_importance')
 
 
 def example_importance(
@@ -144,7 +144,7 @@ def example_importance(
     metrics_df = pd.DataFrame(data=metrics, columns=['Model Type', 'Explanation', 'Model Invariance', 'Explanation Invariance'])
     metrics_df.to_csv(save_dir/'metrics.csv', index=False)
     if plot:
-        robustness_plots(save_dir, 'mut', 'example_importance')
+        single_robustness_plots(save_dir, 'mut', 'example_importance')
 
 
 def concept_importance(
@@ -197,7 +197,7 @@ def concept_importance(
     metrics_df = pd.DataFrame(data=metrics, columns=['Model Type', 'Explanation', 'Model Invariance', 'Explanation Invariance'])
     metrics_df.to_csv(save_dir/'metrics.csv', index=False)
     if plot:
-        robustness_plots(save_dir, 'mut', 'concept_importance')
+        single_robustness_plots(save_dir, 'mut', 'concept_importance')
 
 
 if __name__ == "__main__":
