@@ -141,6 +141,9 @@ def understanding_randomness_plots(plot_dir: Path, dataset: str) -> None:
 
 
 def enforce_invariance_plot(plot_dir: Path, dataset: str) -> None:
+    sns.set(font_scale=1.3)
+    sns.set_style("whitegrid")
+    sns.set_palette('colorblind')
     metrics_df = pd.read_csv(plot_dir/'metrics.csv')
     sns.lineplot(metrics_df, x='N_inv', y='Explanation Invariance', hue='Explanation')
     plt.legend()
@@ -222,5 +225,7 @@ if __name__ == "__main__":
             relaxing_invariance_plots(plot_path, args.dataset, args.experiment_name)
         case 'mc_convergence':
             mc_convergence_plot(plot_path, args.dataset, args.experiment_name)
+        case 'enforce_invariance':
+            enforce_invariance_plot(plot_path, args.dataset)
         case other:
             raise ValueError("Unknown plot name")

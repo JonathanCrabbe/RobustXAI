@@ -237,7 +237,6 @@ def enforce_invariance(
     data_dir: Path = Path.cwd() / "datasets/ecg",
     n_test: int = 1000,
     concept_set_size: int = 100,
-    N_samp: int = 50
 ) -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     set_random_seed(random_seed)
@@ -263,16 +262,16 @@ def enforce_invariance(
         logging.info(f'Model invariance: {torch.mean(model_inv):.3g}')
         for attr_name in attr_methods:
             logging.info(f'Now working with {attr_name} explainer')
-            attr_method = attr_methods[attr_name](model, train_set, n_classes=2)
+            attr_method = attr_methods[attr_name](model, train_set, n_classes=2, layer=model.cnn3)
             if isinstance(attr_method, ConceptExplainer):
                 attr_method.fit(device, concept_set_size)
-            for N_inv in [1, 5, 20, 50, 100, 150, 187]:
+            for N_inv in [1, 5, 20, 50, 100, 187]:
                 logging.info(f'Now working with invariant explainer with N_inv = {N_inv}')
                 inv_method = InvariantExplainer(attr_method, translation, N_inv, isinstance(attr_method, ConceptExplainer))
                 explanation_inv = explanation_invariance_exact(inv_method, translation, test_loader, device, similarity=accuracy)
                 logging.info(f'N_inv = {N_inv} - Explanation invariance = {torch.mean(explanation_inv):.3g}')
                 for inv_expl in explanation_inv:
-                    metrics.append([model_type, attr_name, N_inv, inv_expl.item()])
+                    metrics.append([model_type, f'{attr_name}-Equiv', N_inv, inv_expl.item()])
     metrics_df = pd.DataFrame(data=metrics,
                               columns=['Model Type', 'Explanation', 'N_inv', 'Explanation Invariance'])
     metrics_df.to_csv(save_dir / 'metrics.csv', index=False)
