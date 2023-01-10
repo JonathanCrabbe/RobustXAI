@@ -186,7 +186,8 @@ class MutagenicityDataset(ConceptDataset, Dataset):
 
 class ModelNet40Dataset(ConceptDataset):
 
-    def __init__(self, data_dir: Path, train: bool, random_seed: int = 42):
+    def __init__(self, data_dir: Path, train: bool, random_seed: int = 42, down_sample=10,
+                 do_standardize=True,):
         """
         Generate a ModelNet40 dataset
         Args:
@@ -204,11 +205,29 @@ class ModelNet40Dataset(ConceptDataset):
         if not (self.data_dir/'ModelNet40_cloud.h5').exists():
             self.formatting()
 
+        self.down_sample = down_sample
+        with h5py.File(self.data_dir/'ModelNet40_cloud.h5', 'r') as f:
+            if train:
+                self.X = np.array(f['tr_cloud'])
+                self.Y = np.array(f['tr_label'])
+            else:
+                self.X = np.array(f['test_cloud'])
+                self.Y = np.array(f['test_label'])
+
+        self.num_classes = np.max(self.Y) + 1
+        self.prep = self.standardize if do_standardize else lambda x: x
+
+        # Select the subset of points to use throughout beforehand
+        np.random.seed(random_seed)
+        self.perm = np.random.permutation(self.X.shape[1])[::self.down_sample]
+
     def __len__(self):
-        ...
+        return len(self.X)
 
     def __getitem__(self, idx):
-        ...
+        x = self.prep(self.X[idx, self.perm])
+        y = self.Y[idx]
+        return torch.tensor(x, dtype=torch.float32), torch.tensor(y, dtype=torch.long)
 
     def download(self) -> None:
         import kaggle
@@ -444,3 +463,12 @@ class ModelNet40Dataset(ConceptDataset):
 
     def concept_names(self):
         ...
+
+    @staticmethod
+    def standardize(x):
+        clipper = np.mean(np.abs(x), (0, 1), keepdims=True)
+        z = np.clip(x, -100 * clipper, 100 * clipper)
+        mean = np.mean(z, (0, 1), keepdims=True)
+        std = np.std(z, (0, 1), keepdims=True)
+        return (z - mean) / std
+
