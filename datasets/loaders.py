@@ -4,13 +4,16 @@ import torch
 import pandas as pd
 import numpy as np
 import networkx as nx
+import random
+import h5py
 from pathlib import Path
 from torch.utils.data import Dataset, SubsetRandomSampler
 from imblearn.over_sampling import SMOTE
 from abc import ABC, abstractmethod
 from torch_geometric.datasets import TUDataset
 from utils.misc import to_molecule
-from utils.plots import draw_molecule
+from joblib import Parallel, delayed
+from tqdm import tqdm
 
 
 class ConceptDataset(ABC, Dataset):
@@ -180,3 +183,264 @@ class MutagenicityDataset(ConceptDataset, Dataset):
                     return True
         return False
 
+
+class ModelNet40Dataset(ConceptDataset):
+
+    def __init__(self, data_dir: Path, train: bool, random_seed: int = 42):
+        """
+        Generate a ModelNet40 dataset
+        Args:
+            data_dir: directory where the dataset should be stored
+            train: True if the training set should be returned, False for the testing set
+            random_seed: random seed for reproducibility
+        """
+        self.data_dir = data_dir
+        self.random_seed = random_seed
+        if not data_dir.exists():
+            os.makedirs(data_dir)
+            self.download()
+        if not (self.data_dir/'ModelNet_40_npy').exists():
+            self.preprocess()
+        if not (self.data_dir/'ModelNet40_cloud.h5').exists():
+            self.formatting()
+
+    def __len__(self):
+        ...
+
+    def __getitem__(self, idx):
+        ...
+
+    def download(self) -> None:
+        import kaggle
+        logging.info(f"Downloading ModelNet40 dataset in {self.data_dir}")
+        kaggle.api.authenticate()
+        kaggle.api.dataset_download_files('balraj98/modelnet40-princeton-3d-object-dataset', path=self.data_dir, unzip=True)
+        logging.info(f"ECG dataset downloaded in {self.data_dir}")
+
+    def preprocess(self) -> None:
+        """
+        Preprocessing code adapted from https://github.com/michaelsdr/sinkformers/blob/main/model_net_40/to_h5.py
+        :return:
+        """
+        random.seed(self.random_seed)
+        path = self.data_dir/"ModelNet40"
+        folders = [dir for dir in sorted(os.listdir(path)) if os.path.isdir(path / dir)]
+        classes = {folder: i for i, folder in enumerate(folders)}
+
+        def read_off(file):
+            header = file.readline().strip()
+            if 'OFF' not in header:
+                raise ValueError('Not a valid OFF header')
+            if header != 'OFF':  # The header is merged with the first line
+                second_line = header.replace('OFF', '')
+            else:  # The second line can be read directly
+                 second_line = file.readline()
+            n_verts, n_faces, __ = tuple([int(s) for s in second_line.strip().split(' ')])
+            verts = [[float(s) for s in file.readline().strip().split(' ')] for i_vert in range(n_verts)]
+            faces = [[int(s) for s in file.readline().strip().split(' ')][1:] for i_face in range(n_faces)]
+            return verts, faces
+
+        with open(path / "bed/train/bed_0001.off", 'r') as f:
+            verts, faces = read_off(f)
+
+        i, j, k = np.array(faces).T
+        x, y, z = np.array(verts).T
+
+        class PointSampler(object):
+            def __init__(self, output_size):
+                assert isinstance(output_size, int)
+                self.output_size = output_size
+
+            def triangle_area(self, pt1, pt2, pt3):
+                side_a = np.linalg.norm(pt1 - pt2)
+                side_b = np.linalg.norm(pt2 - pt3)
+                side_c = np.linalg.norm(pt3 - pt1)
+                s = 0.5 * (side_a + side_b + side_c)
+                return max(s * (s - side_a) * (s - side_b) * (s - side_c), 0) ** 0.5
+
+            def sample_point(self, pt1, pt2, pt3):
+                # barycentric coordinates on a triangle
+                # https://mathworld.wolfram.com/BarycentricCoordinates.html
+                s, t = sorted([random.random(), random.random()])
+                f = lambda i: s * pt1[i] + (t - s) * pt2[i] + (1 - t) * pt3[i]
+                return (f(0), f(1), f(2))
+
+            def __call__(self, mesh):
+                verts, faces = mesh
+                verts = np.array(verts)
+                areas = np.zeros((len(faces)))
+
+                for i in range(len(areas)):
+                    areas[i] = (self.triangle_area(verts[faces[i][0]],
+                                                   verts[faces[i][1]],
+                                                   verts[faces[i][2]]))
+
+                sampled_faces = (random.choices(faces,
+                                                weights=areas,
+                                                cum_weights=None,
+                                                k=self.output_size))
+
+                sampled_points = np.zeros((self.output_size, 3))
+
+                for i in range(len(sampled_faces)):
+                    sampled_points[i] = (self.sample_point(verts[sampled_faces[i][0]],
+                                                           verts[sampled_faces[i][1]],
+                                                           verts[sampled_faces[i][2]]))
+
+                return sampled_points
+
+        pointcloud = PointSampler(10000)((verts, faces))
+
+        def process(file, file_adr, save_adr):
+            fname = save_adr/f'{file[:-4]}.npy'
+            if file_adr.suffix == '.off':
+                if not os.path.isfile(fname):
+                    with open(file_adr, 'r') as f:
+                        verts, faces = read_off(f)
+                        pointcloud = PointSampler(10000)((verts, faces))
+                        np.save(fname, pointcloud)
+                else:
+                    pass
+
+        tr_label = []
+        tr_cloud = []
+        test_cloud = []
+        test_label = []
+
+        folder = 'train'
+        root_dir = path
+        folders = [dir for dir in sorted(os.listdir(root_dir)) if os.path.isdir(root_dir / dir)]
+        classes = {folder: i for i, folder in enumerate(folders)}
+        files = []
+
+        all_files = []
+        all_files_adr = []
+        all_save_adr = []
+
+        for category in classes.keys():
+            save_adr = self.data_dir/f'ModelNet_40_npy/{category}/{folder}'
+            try:
+                os.makedirs(save_adr)
+            except:
+                pass
+            new_dir = root_dir / Path(category) / folder
+            for file in os.listdir(new_dir):
+                all_files.append(file)
+                all_files_adr.append(new_dir / file)
+                all_save_adr.append(save_adr)
+
+        logging.info('Now processing the training files')
+        Parallel(n_jobs=40)(delayed(process)(file, file_adr, save_adr) for (file, file_adr, save_adr)
+                            in tqdm(zip(all_files, all_files_adr, all_save_adr), leave=False, unit='files'))
+
+        folder = 'test'
+        root_dir = path
+        folders = [dir for dir in sorted(os.listdir(root_dir)) if os.path.isdir(root_dir / dir)]
+        classes = {folder: i for i, folder in enumerate(folders)}
+        files = []
+
+        all_files = []
+        all_files_adr = []
+        all_save_adr = []
+
+        for category in classes.keys():
+            save_adr = self.data_dir/f'ModelNet_40_npy/{category}/{folder}'
+            try:
+                os.makedirs(save_adr)
+            except:
+                pass
+            new_dir = root_dir / Path(category) / folder
+            for file in os.listdir(new_dir):
+                all_files.append(file)
+                all_files_adr.append(new_dir / file)
+                all_save_adr.append(save_adr)
+
+        logging.info('Now processing the test files')
+        Parallel(n_jobs=40)(delayed(process)(file, file_adr, save_adr) for (file, file_adr, save_adr)
+                            in tqdm(zip(all_files, all_files_adr, all_save_adr), leave=False, unit='files'))
+
+    def formatting(self) -> None:
+        """
+            Preprocessing code adapted from https://github.com/michaelsdr/sinkformers/blob/main/model_net_40/formatting.py
+            :return:
+        """
+        path = self.data_dir/"ModelNet_40_npy"
+
+        folders = [dir for dir in sorted(os.listdir(path)) if os.path.isdir(path / dir)]
+        classes = {folder: i for i, folder in enumerate(folders)}
+
+        tr_label = []
+        tr_cloud = []
+        test_cloud = []
+        test_label = []
+
+        logging.info('Now formatting training files')
+        folder = 'train'
+        root_dir = path
+        folders = [dir for dir in sorted(os.listdir(root_dir)) if os.path.isdir(root_dir / dir)]
+        classes = {folder: i for i, folder in enumerate(folders)}
+        files = []
+
+        all_files = []
+        all_files_adr = []
+        all_save_adr = []
+
+        for (category, num) in zip(classes.keys(), classes.values()):
+            new_dir = root_dir / Path(category) / folder
+
+            for file in os.listdir(new_dir):
+                if file.endswith('.npy'):
+                    try:
+                        point_cloud = np.load(new_dir / file)
+                        tr_cloud.append(point_cloud)
+                        tr_label.append(num)
+                    except:
+                        pass
+        tr_cloud = np.asarray(tr_cloud)
+        tr_label = np.asarray(tr_label)
+        np.save(str(self.data_dir/'tr_cloud.npy'), tr_cloud)
+        np.save(str(self.data_dir/'tr_label.npy'), tr_label)
+
+        logging.info('Now formatting test files')
+        folder = 'test'
+        root_dir = path
+        folders = [dir for dir in sorted(os.listdir(root_dir)) if os.path.isdir(root_dir / dir)]
+        classes = {folder: i for i, folder in enumerate(folders)}
+        files = []
+
+        for (category, num) in zip(classes.keys(), classes.values()):
+            new_dir = root_dir / Path(category) / folder
+
+            for file in os.listdir(new_dir):
+                if file.endswith('.npy'):
+                    try:
+                        point_cloud = np.load(new_dir / file)
+                        test_cloud.append(point_cloud)
+                        test_label.append(num)
+                    except:
+                        pass
+
+        test_cloud = np.asarray(test_cloud)
+        test_label = np.asarray(test_label)
+        np.save(str(self.data_dir/'test_cloud.npy'), test_cloud)
+        np.save(str(self.data_dir/'test_label.npy'), test_label)
+
+        with h5py.File(self.data_dir/'ModelNet40_cloud.h5', 'w') as f:
+            f.create_dataset("test_cloud", data=test_cloud)
+            f.create_dataset("tr_cloud", data=tr_cloud)
+            f.create_dataset("test_label", data=test_label)
+            f.create_dataset("tr_label", data=tr_label)
+
+    def generate_concept_dataset(self, concept_id: int, concept_set_size: int) -> tuple:
+        """
+        Return a concept dataset with positive/negatives for ECG
+        Args:
+            random_seed: random seed for reproducibility
+            concept_set_size: size of the positive and negative subset
+        Returns:
+            a concept dataset of the form X (features),C (concept labels)
+        """
+        ...
+
+    def concept_names(self):
+        ...

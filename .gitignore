@@ -161,4 +161,5 @@ cython_debug/
 
 datasets/ecg/
 datasets/mut/
+datasets/mnet/
 results/
