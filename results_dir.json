@@ -1,4 +1,5 @@
 {
   "Electrocardiograms": "results/ecg/cnn32_seed42",
-  "Mutagenicity": "results/mut/gnn32_seed42"
+  "Mutagenicity": "results/mut/gnn32_seed42",
+  "ModelNet40": "results/mnet/dset256_seed42"
 }

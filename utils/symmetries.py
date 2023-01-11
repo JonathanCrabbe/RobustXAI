@@ -75,7 +75,30 @@ class GraphPermutation(Symmetry):
         self.perm = torch.randperm(num_nodes)
 
     def get_all_symmetries(self, data):
-        return None
+        raise RuntimeError('Symmetry group too large')
+
+    def set_symmetry(self, perm: list):
+        self.perm = perm
+
+
+class SetPermutation(Symmetry):
+    def __init__(self, perm: list = None):
+        super().__init__()
+        self.perm = perm if perm else torch.tensor([])
+
+    def forward(self, x):
+        num_elems = x.shape[1]
+        if len(self.perm) != num_elems:
+            self.sample_symmetry(x)
+        x_new = x[:, self.perm, :]
+        return x_new
+
+    def sample_symmetry(self, x):
+        num_elems = x.shape[1]
+        self.perm = torch.randperm(num_elems)
+
+    def get_all_symmetries(self, data):
+        raise RuntimeError('Symmetry group too large')
 
     def set_symmetry(self, perm: list):
         self.perm = perm

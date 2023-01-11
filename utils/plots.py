@@ -29,7 +29,7 @@ def single_robustness_plots(plot_dir: Path, dataset: str, experiment_name: str) 
 
 
 def global_robustness_plots(experiment_name: str) -> None:
-    sns.set(font_scale=1.3)
+    sns.set(font_scale=1.0)
     sns.set_style("whitegrid")
     sns.set_palette('colorblind')
     with open(Path.cwd()/"results_dir.json") as f:
@@ -44,7 +44,8 @@ def global_robustness_plots(experiment_name: str) -> None:
                   'Representation Similarity-Lin1': 'Rep. Similar-Inv', 'Representation Similarity-Conv3': 'Rep. Similar-Equiv',
                   'CAR-Lin1': 'CAR-Inv', 'CAR-Conv3': 'CAR-Equiv', 'CAV-Lin1': 'CAV-Inv', 'CAV-Conv3': 'CAV-Equiv'}
     global_df = global_df.replace(rename_dic)
-    global_df = global_df[(global_df['Model Type'] == 'All-CNN') | (global_df['Model Type'] == 'GNN')]
+    global_df = global_df[(global_df['Model Type'] == 'All-CNN') | (global_df['Model Type'] == 'GNN')
+                          |(global_df['Model Type'] == 'Deep-Set')]
     y = 'Explanation Equivariance' if 'Explanation Equivariance' in global_df.columns else 'Explanation Invariance'
     ax = sns.boxplot(global_df, x='Dataset', hue='Explanation', y=y, showfliers=False)
     wrap_labels(ax, 10)
@@ -213,7 +214,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     with open(Path.cwd() / "results_dir.json") as f:
         path_dic = json.load(f)
-    dataset_full_names = {'ecg': 'Electrocardiograms', 'mut': 'Mutagenicity'}
+    dataset_full_names = {'ecg': 'Electrocardiograms', 'mut': 'Mutagenicity', 'mnet': 'ModelNet40'}
     plot_path = Path.cwd()/path_dic[dataset_full_names[args.dataset]]/args.experiment_name
     logging.info(f"Saving {args.plot_name} plot for {args.dataset} in {str(plot_path)}")
     match args.plot_name:
