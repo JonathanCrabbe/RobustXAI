@@ -227,6 +227,9 @@ class ClassifierModelNet40(nn.Module):
       with open(path_to_metadata, "w") as f:
           json.dump(metadata, f, indent=4, sort_keys=True, **kwargs)
 
+  def last_layer(self) -> nn.Module or None:
+      return self.ro[-1]
+
 
 def clip_grad(model, max_norm):
     total_norm = 0

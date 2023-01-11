@@ -42,7 +42,10 @@ def global_robustness_plots(experiment_name: str) -> None:
     global_df = pd.concat(global_df)
     rename_dic = {'SimplEx-Lin1': 'SimplEx-Inv', 'SimplEx-Conv3': 'SimplEx-Equiv',
                   'Representation Similarity-Lin1': 'Rep. Similar-Inv', 'Representation Similarity-Conv3': 'Rep. Similar-Equiv',
-                  'CAR-Lin1': 'CAR-Inv', 'CAR-Conv3': 'CAR-Equiv', 'CAV-Lin1': 'CAV-Inv', 'CAV-Conv3': 'CAV-Equiv'}
+                  'CAR-Lin1': 'CAR-Inv', 'CAR-Conv3': 'CAR-Equiv', 'CAV-Lin1': 'CAV-Inv', 'CAV-Conv3': 'CAV-Equiv',
+                  'SimplEx-Phi': 'SimplEx-Equiv', 'SimplEx-Rho': 'SimplEx-Inv', 'Representation Similarity-Phi': 'Rep. Similar-Equiv',
+                  'Representation Similarity-Rho': 'Rep. Similar-Inv', 'CAR-Phi': 'CAR-Equiv', 'CAR-Rho': 'CAR-Inv',
+                  'CAV-Phi': 'CAV-Equiv', 'CAV-Rho': 'CAV-Inv'}
     global_df = global_df.replace(rename_dic)
     global_df = global_df[(global_df['Model Type'] == 'All-CNN') | (global_df['Model Type'] == 'GNN')
                           |(global_df['Model Type'] == 'Deep-Set')]
