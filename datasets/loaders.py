@@ -452,17 +452,40 @@ class ModelNet40Dataset(ConceptDataset):
 
     def generate_concept_dataset(self, concept_id: int, concept_set_size: int) -> tuple:
         """
-        Return a concept dataset with positive/negatives for ECG
+        Return a concept dataset with positive/negatives for ModelNet40
         Args:
             random_seed: random seed for reproducibility
             concept_set_size: size of the positive and negative subset
         Returns:
             a concept dataset of the form X (features),C (concept labels)
         """
-        ...
+        path = self.data_dir / "ModelNet_40_npy"
+        classes = [dir for dir in sorted(os.listdir(path)) if os.path.isdir(path / dir)]
+        concept_to_classes = {'Foot': {'bed', 'bench', 'chair', 'desk', 'lamp', 'person', 'piano', 'sofa', 'stool', 'table'},
+                              'Container': {'bathtub', 'bottle', 'bowl', 'cup', 'flower_pot', 'sink', 'toilet', 'vase'},
+                              'Parallelepiped': {'bed', 'bookshelf', 'desk', 'door', 'dresser', 'glass_box', 'monitor',
+                                                 'night_stand', 'radio', 'sofa', 'tv_stand', 'wardrobe', 'xbox'},
+                              'Elongated': {'airplane', 'bathtub', 'bed', 'bench', 'bottle', 'car', 'chair', 'desk',
+                                            'door', 'guitar', 'lamp', 'person', 'sofa', 'stairs', 'table'}}
+        mask = []
+        for y in self.Y:
+            mask.append(classes[y] in concept_to_classes[self.concept_names()[concept_id]])
+        mask = torch.tensor(mask)
+        positive_idx = torch.nonzero(mask).flatten()
+        negative_idx = torch.nonzero(~mask).flatten()
+        positive_loader = torch.utils.data.DataLoader(self, batch_size=concept_set_size, sampler=SubsetRandomSampler(positive_idx))
+        negative_loader = torch.utils.data.DataLoader(self, batch_size=concept_set_size,sampler=SubsetRandomSampler(negative_idx))
+        X_pos, _ = next(iter(positive_loader))
+        X_neg, _ = next(iter(negative_loader))
+        X = torch.concatenate((X_pos, X_neg), 0)
+        C = torch.concatenate((torch.ones(concept_set_size), torch.zeros(concept_set_size)), 0)
+        rand_perm = torch.randperm(len(X))
+        return X[rand_perm], C[rand_perm]
+
+
 
     def concept_names(self):
-        ...
+        return ['Foot', 'Container', 'Parallelepiped', 'Elongated']
 
     @staticmethod
     def standardize(x):
