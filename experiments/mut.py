@@ -8,13 +8,14 @@ import itertools
 from torch_geometric.loader import DataLoader
 from datasets.loaders import MutagenicityDataset
 from models.graphs import ClassifierMutagenicity
+from math import sqrt
 from pathlib import Path
 from utils.misc import set_random_seed
-from utils.plots import single_robustness_plots
+from utils.plots import single_robustness_plots, mc_convergence_plot
 from captum.attr import IntegratedGradients, GradientShap
 from utils.symmetries import GraphPermutation
 from interpretability.robustness import graph_model_invariance, graph_explanation_equivariance,\
-    graph_explanation_invariance, accuracy
+    graph_explanation_invariance, accuracy, cos_similarity
 from interpretability.feature import FeatureImportance, GraphFeatureAblation
 from interpretability.example import GraphRepresentationSimilarity, GraphSimplEx, GraphTracIn, GraphInfluenceFunctions
 from interpretability.concept import GraphCAR, GraphCAV
@@ -200,6 +201,46 @@ def concept_importance(
         single_robustness_plots(save_dir, 'mut', 'concept_importance')
 
 
+def mc_convergence(
+    random_seed: int,
+    latent_dim: int,
+    plot: bool,
+    model_name: str = "model",
+    model_dir: Path = Path.cwd() / f"results/mut/",
+    data_dir: Path = Path.cwd() / "datasets/mut",
+    N_samp_max: int = 100
+) -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    set_random_seed(random_seed)
+    test_set = MutagenicityDataset(data_dir, train=False, random_seed=random_seed)
+    test_loader = DataLoader(test_set, 1)
+    model_dir = model_dir / model_name
+    model = ClassifierMutagenicity(latent_dim)
+    model.load_metadata(model_dir)
+    model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
+    model.to(device).eval()
+    permutation = GraphPermutation()
+    save_dir = model_dir/'mc_convergence'
+    mc_estimators = {
+        'Gradient Shap Equivariance': (FeatureImportance(GradientShap(model)), graph_explanation_equivariance, cos_similarity),
+        }
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+    data = []
+    for estimator_name in mc_estimators:
+        logging.info(f'Computing Monte Carlo estimators for {estimator_name}')
+        function, metric, similarity = mc_estimators[estimator_name]
+        scores = metric(function, permutation, test_loader, device, N_samp=N_samp_max, reduce=False, similarity=similarity)
+        for n_samp in range(2, N_samp_max):
+            sub_scores = scores[:, :n_samp]
+            sub_scores_sem = torch.std(sub_scores)/sqrt(torch.numel(sub_scores))
+            data.append([estimator_name, n_samp, torch.mean(sub_scores_sem).item(), torch.mean(sub_scores).item()])
+    df = pd.DataFrame(data=data, columns=['Estimator Name', 'Number of MC Samples', 'Estimator SEM', 'Estimator Value'])
+    df.to_csv(save_dir / 'metrics.csv', index=False)
+    if plot:
+        mc_convergence_plot(save_dir, 'mut', 'mc_convergence')
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
@@ -221,5 +262,7 @@ if __name__ == "__main__":
             example_importance(args.seed, args.latent_dim, args.batch_size, args.plot, model_name, N_samp=args.N_samp)
         case 'concept_importance':
             concept_importance(args.seed, args.latent_dim, args.batch_size, args.plot, model_name, N_samp=args.N_samp)
+        case 'mc_convergence':
+            mc_convergence(args.seed, args.latent_dim,  args.plot, model_name)
         case other:
             raise ValueError('Invalid experiment name.')

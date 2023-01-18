@@ -89,7 +89,7 @@ def explanation_invariance(explainer: nn.Module, symmetry: Symmetry, data_loader
     invariance_scores = torch.zeros(len(data_loader.dataset), N_samp)
     for sample_id in tqdm(range(N_samp), leave=False, unit='MC sample'):
         sample_scores = []
-        for x, y in data_loader:
+        for x, y in tqdm(data_loader, leave=False, unit='batch'):
             x = x.to(device)
             y = y.to(device)
             e1 = explainer(x, y)
@@ -146,7 +146,7 @@ def explanation_equivariance(explainer: nn.Module, symmetry: Symmetry, data_load
     equivariance_scores = torch.zeros(len(data_loader.dataset), N_samp)
     for sample_id in tqdm(range(N_samp), leave=False, unit='MC sample'):
         sample_scores = []
-        for x, y in data_loader:
+        for x, y in tqdm(data_loader, leave=False, unit='batch'):
             x = x.to(device)
             y = y.to(device)
             symmetry.sample_symmetry(x)

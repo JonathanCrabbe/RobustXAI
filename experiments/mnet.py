@@ -7,6 +7,7 @@ import pandas as pd
 import itertools
 from datasets.loaders import ModelNet40Dataset
 from pathlib import Path
+from math import sqrt
 from utils.misc import set_random_seed
 from models.sets import ClassifierModelNet40
 from torch.utils.data import DataLoader, Subset, RandomSampler
@@ -14,9 +15,10 @@ from captum.attr import IntegratedGradients, GradientShap, FeatureAblation, Feat
 from utils.symmetries import SetPermutation
 from interpretability.feature import FeatureImportance
 from interpretability.example import SimplEx, RepresentationSimilarity, InfluenceFunctions, TracIn
-from interpretability.robustness import model_invariance, explanation_equivariance, explanation_invariance, accuracy
-from interpretability.concept import CAR, CAV
-from utils.plots import single_robustness_plots
+from interpretability.robustness import model_invariance, explanation_equivariance, explanation_invariance, \
+    accuracy, cos_similarity
+from interpretability.concept import CAR, CAV, ConceptExplainer
+from utils.plots import single_robustness_plots, mc_convergence_plot
 
 
 def train_mnet_model(
@@ -208,6 +210,67 @@ def concept_importance(
         single_robustness_plots(save_dir, 'mnet', 'concept_importance')
 
 
+def mc_convergence(
+    random_seed: int,
+    latent_dim: int,
+    batch_size: int,
+    plot: bool,
+    model_name: str = "model",
+    model_dir: Path = Path.cwd() / f"results/mnet/",
+    data_dir: Path = Path.cwd() / "datasets/mnet",
+    n_train: int = 100,
+    n_test: int = 1000,
+    N_samp_max: int = 100
+) -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    set_random_seed(random_seed)
+    train_set = ModelNet40Dataset(data_dir, train=True, random_seed=random_seed)
+    train_loader = DataLoader(train_set, n_train, shuffle=True)
+    X_train, _ = next(iter(train_loader))
+    X_train = X_train.to(device)
+    test_set = ModelNet40Dataset(data_dir, train=False, random_seed=random_seed)
+    test_subset = Subset(test_set, torch.randperm(len(test_set))[:n_test])
+    test_loader = DataLoader(test_subset, batch_size)
+    model_dir = model_dir / model_name
+    model = ClassifierModelNet40(latent_dim=latent_dim, name=model_name)
+    model.load_metadata(model_dir)
+    model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
+    model.to(device).eval()
+    permutation = SetPermutation()
+    save_dir = model_dir/'mc_convergence'
+    mc_estimators = {
+        'Feature Permutation Equivariance': (FeaturePermutation, explanation_equivariance, cos_similarity),
+        'Gradient Shap Equivariance': (GradientShap, explanation_equivariance, cos_similarity),
+        'SimplEx-Equiv Invariance': (SimplEx, explanation_invariance, cos_similarity),
+        'CAV-Equiv Invariance': (CAV, explanation_invariance, accuracy),
+        'CAR-Equiv Invariance': (CAR, explanation_invariance, accuracy)
+        }
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+    data = []
+    for estimator_name in mc_estimators:
+        logging.info(f'Computing Monte Carlo estimators for {estimator_name}')
+        attr_method, metric, similarity = mc_estimators[estimator_name]
+        if attr_method in {FeaturePermutation, GradientShap}:
+            explanation = FeatureImportance(attr_method(model))
+        elif attr_method in {CAR, CAV}:
+            explanation = attr_method(model, train_set, model.phi[2], n_classes=40)
+            explanation.fit(device, 500)
+        elif attr_method == SimplEx:
+            explanation = attr_method(model, X_train, model.phi[2])
+        else:
+            raise ValueError(f"Invalid attribution method: {attr_method}")
+        scores = metric(explanation, permutation, test_loader, device, N_samp=N_samp_max, reduce=False, similarity=similarity)
+        for n_samp in range(2, N_samp_max):
+            sub_scores = scores[:, :n_samp]
+            sub_scores_sem = torch.std(sub_scores) / sqrt(torch.numel(sub_scores))
+            data.append([estimator_name, n_samp, torch.mean(sub_scores_sem).item(), torch.mean(sub_scores).item()])
+    df = pd.DataFrame(data=data, columns=['Estimator Name', 'Number of MC Samples', 'Estimator SEM', 'Estimator Value'])
+    df.to_csv(save_dir / 'metrics.csv', index=False)
+    if plot:
+        mc_convergence_plot(save_dir, 'mnet', 'mc_convergence')
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
@@ -229,5 +292,7 @@ if __name__ == "__main__":
             example_importance(args.seed, args.latent_dim, args.batch_size, args.plot, model_name, n_test=args.n_test)
         case 'concept_importance':
             concept_importance(args.seed, args.latent_dim, args.batch_size, args.plot, model_name, n_test=args.n_test)
+        case 'mc_convergence':
+            mc_convergence(args.seed, args.latent_dim, args.batch_size, args.plot, model_name, n_test=args.n_test)
         case other:
             raise ValueError('Invalid experiment name.')

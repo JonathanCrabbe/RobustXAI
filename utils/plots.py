@@ -123,6 +123,7 @@ def mc_convergence_plot(plot_dir: Path, dataset: str, experiment_name: str) -> N
     plt.legend()
     plt.xlabel(r'$N_{\mathrm{samp}}$')
     plt.ylabel('Monte Carlo Estimator')
+    plt.ylim(-1, 1)
     plt.tight_layout()
     plt.savefig(plot_dir / f'{experiment_name}_{dataset}.pdf')
     plt.close()
