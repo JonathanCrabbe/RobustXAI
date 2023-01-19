@@ -158,6 +158,15 @@ def enforce_invariance_plot(plot_dir: Path, dataset: str) -> None:
     plt.close()
 
 
+def sensitivity_plot(plot_dir: Path, dataset: str) -> None:
+    metrics_df = pd.read_csv(plot_dir / 'metrics.csv')
+    sns.scatterplot(metrics_df, x='Explanation Sensitivity', y='Explanation Equivariance', hue='Explanation', alpha=.5, s=10)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(plot_dir / f'sensitivity_comparison_{dataset}.pdf')
+    plt.close()
+
+
 def draw_molecule(g, edge_mask=None, draw_edge_labels=False):
     g = g.copy().to_undirected()
     node_labels = {}
@@ -207,6 +216,7 @@ def wrap_labels(ax, width, break_long_words=False, do_y: bool = False) -> None:
         ax.set_yticklabels(labels, rotation=0)
 
 
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     parser = argparse.ArgumentParser()
@@ -232,5 +242,7 @@ if __name__ == "__main__":
             mc_convergence_plot(plot_path, args.dataset, args.experiment_name)
         case 'enforce_invariance':
             enforce_invariance_plot(plot_path, args.dataset)
+        case 'sensitivity_comparison':
+            sensitivity_plot(plot_path, args.dataset)
         case other:
             raise ValueError("Unknown plot name")

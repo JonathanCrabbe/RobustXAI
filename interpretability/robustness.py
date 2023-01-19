@@ -5,6 +5,8 @@ from tqdm import tqdm
 from torch.utils.data import DataLoader
 from utils.symmetries import Symmetry
 from random import shuffle
+from captum.metrics import sensitivity_max
+from captum.attr import Attribution, GradientShap, Occlusion
 
 
 def l1_distance(x1: torch.Tensor, x2: torch.Tensor, reduce: bool = False) -> torch.Tensor:
@@ -196,6 +198,23 @@ def graph_explanation_equivariance(explainer: nn.Module, symmetry: Symmetry, dat
     if reduce:
         invariance_scores = torch.mean(invariance_scores, dim=-1)
     return invariance_scores
+
+
+def sensitivity(explainer: Attribution, data_loader: DataLoader, device: torch.device) -> torch.Tensor:
+    sens_scores = []
+    for x, y in tqdm(data_loader, leave=False, unit='batch'):
+        x, y = x.to(device), y.to(device)
+        if isinstance(explainer, GradientShap):
+            baselines = torch.zeros(x.shape, device=device)
+            sens = sensitivity_max(explainer.attribute, x, target=y, baselines=baselines)
+        elif isinstance(explainer, Occlusion):
+            window_shapes = (1,) + (len(x.shape) - 2) * (5,)
+            sens = sensitivity_max(explainer.attribute, x, target=y, sliding_window_shapes=window_shapes)
+        else:
+            sens = sensitivity_max(explainer.attribute, x, target=y)
+        sens_scores.append(sens)
+    sens_scores = torch.cat(sens_scores, dim=0)
+    return sens_scores
 
 
 class InvariantExplainer(nn.Module):
