@@ -41,14 +41,14 @@ class Translation1D(Symmetry):
 
     def sample_symmetry(self, x):
         T = x.shape[-1]
-        self.n_steps = random.randint(0, T-1)
+        self.n_steps = random.randint(0, T - 1)
 
     def get_all_symmetries(self, x):
         T = x.shape[-1]
         return list(range(T))
 
     def set_symmetry(self, n_steps):
-       self.n_steps = n_steps
+        self.n_steps = n_steps
 
 
 class GraphPermutation(Symmetry):
@@ -75,7 +75,7 @@ class GraphPermutation(Symmetry):
         self.perm = torch.randperm(num_nodes)
 
     def get_all_symmetries(self, data):
-        raise RuntimeError('Symmetry group too large')
+        raise RuntimeError("Symmetry group too large")
 
     def set_symmetry(self, perm: list):
         self.perm = perm
@@ -98,7 +98,45 @@ class SetPermutation(Symmetry):
         self.perm = torch.randperm(num_elems)
 
     def get_all_symmetries(self, data):
-        raise RuntimeError('Symmetry group too large')
+        raise RuntimeError("Symmetry group too large")
 
     def set_symmetry(self, perm: list):
         self.perm = perm
+
+
+class Translation2D(Symmetry):
+    def __init__(self, max_dispacement: int, h: int = None, w: int = None):
+        super().__init__()
+        self.max_displacement = max_dispacement
+        self.h = h
+        self.w = w
+
+    def forward(self, x):
+        W, H = x.shape[-2:]
+        if not self.h or not self.w:
+            self.sample_symmetry(x)
+        w_perm_ids = torch.arange(0, W).to(x.device)
+        h_perm_ids = torch.arange(0, H).to(x.device)
+        w_perm_ids = w_perm_ids - self.w
+        w_perm_ids = w_perm_ids % W
+        h_perm_ids = h_perm_ids - self.h
+        h_perm_ids = h_perm_ids % H
+        x = x[:, :, :, h_perm_ids]
+        x = x[:, :, w_perm_ids, :]
+        return x
+
+    def sample_symmetry(self, x):
+        self.w = random.randint(-self.max_displacement, self.max_displacement)
+        self.h = random.randint(-self.max_displacement, self.max_displacement)
+
+    def get_all_symmetries(self, x):
+        return [
+            (w, h)
+            for w in range(-self.max_displacement, self.max_displacement + 1)
+            for h in range(-self.max_displacement, self.max_displacement + 1)
+        ]
+
+    def set_symmetry(self, displacement):
+        w, h = displacement
+        self.w = w
+        self.h = h
