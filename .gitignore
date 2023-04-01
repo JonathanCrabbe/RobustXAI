@@ -162,4 +162,5 @@ cython_debug/
 datasets/ecg/
 datasets/mut/
 datasets/mnet/
+datasets/fashion_mnist/
 results/
