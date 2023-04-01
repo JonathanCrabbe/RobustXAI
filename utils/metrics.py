@@ -11,14 +11,22 @@ def correlation_matrix(attribution_dic: dict[str, np.ndarray]) -> np.ndarray:
         Correlation matrix
     """
     corr_mat = np.empty((len(attribution_dic), len(attribution_dic)))
-    for entry_id, (name1, name2) in enumerate(itertools.product(attribution_dic, attribution_dic)):
-        corr_mat[entry_id//len(attribution_dic), entry_id%len(attribution_dic)] =\
-            np.corrcoef(attribution_dic[name1].flatten(), attribution_dic[name2].flatten())[0, 1]
+    for entry_id, (name1, name2) in enumerate(
+        itertools.product(attribution_dic, attribution_dic)
+    ):
+        corr_mat[
+            entry_id // len(attribution_dic), entry_id % len(attribution_dic)
+        ] = np.corrcoef(
+            attribution_dic[name1].flatten(), attribution_dic[name2].flatten()
+        )[
+            0, 1
+        ]
     return corr_mat
 
 
 class AverageMeter(object):
     """Computes and stores the average and current value"""
+
     def __init__(self, name):
         self.name = name
         self.reset()

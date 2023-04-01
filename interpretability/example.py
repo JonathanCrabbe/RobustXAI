@@ -22,7 +22,9 @@ class ExampleBasedExplainer(nn.Module, ABC):
 
 
 class SimplEx(ExampleBasedExplainer):
-    def __init__(self, model: nn.Module,  X_train: torch.Tensor, layer: nn.Module, **kwargs):
+    def __init__(
+        self, model: nn.Module, X_train: torch.Tensor, layer: nn.Module, **kwargs
+    ):
         super().__init__(model, X_train)
         self.H = torch.empty(0)
 
@@ -43,11 +45,13 @@ class SimplEx(ExampleBasedExplainer):
 
     @staticmethod
     def compute_weights(
-            H: torch.Tensor,
-            H_train: torch.Tensor,
-            n_epoch: int = 1000,
+        H: torch.Tensor,
+        H_train: torch.Tensor,
+        n_epoch: int = 1000,
     ) -> torch.Tensor:
-        preweights = torch.zeros((len(H), len(H_train)), requires_grad=True, device=H_train.device)
+        preweights = torch.zeros(
+            (len(H), len(H_train)), requires_grad=True, device=H_train.device
+        )
         optimizer = torch.optim.Adam([preweights])
         for epoch in range(n_epoch):
             optimizer.zero_grad()
@@ -60,7 +64,9 @@ class SimplEx(ExampleBasedExplainer):
 
 
 class RepresentationSimilarity(ExampleBasedExplainer):
-    def __init__(self, model: nn.Module,  X_train: torch.Tensor, layer: nn.Module, **kwargs):
+    def __init__(
+        self, model: nn.Module, X_train: torch.Tensor, layer: nn.Module, **kwargs
+    ):
         super().__init__(model, X_train)
         self.H = torch.empty(0)
 
@@ -76,16 +82,25 @@ class RepresentationSimilarity(ExampleBasedExplainer):
 
     def forward(self, x, y) -> torch.Tensor:
         self.model(x)
-        attribution = F.cosine_similarity(self.H_train.unsqueeze(0), self.H.unsqueeze(1), dim=-1).cpu()
+        attribution = F.cosine_similarity(
+            self.H_train.unsqueeze(0), self.H.unsqueeze(1), dim=-1
+        ).cpu()
         return attribution
 
 
 class TracIn(ExampleBasedExplainer):
-    def __init__(self, model: nn.Module,  X_train: torch.Tensor,  Y_train: torch.Tensor,
-                 loss_function: callable, save_dir: Path, **kwargs):
+    def __init__(
+        self,
+        model: nn.Module,
+        X_train: torch.Tensor,
+        Y_train: torch.Tensor,
+        loss_function: callable,
+        save_dir: Path,
+        **kwargs,
+    ):
         super().__init__(model, X_train)
         self.last_layer = model.last_layer()
-        self.save_dir = save_dir/'tracin'
+        self.save_dir = save_dir / "tracin"
         self.loss_function = loss_function
         self.checkpoints = model.checkpoints_files
         self.device = X_train.device
@@ -108,12 +123,20 @@ class TracIn(ExampleBasedExplainer):
                 self.model.load_state_dict(torch.load(checkpoint), strict=False)
                 test_loss = self.loss_function(self.model(x_test), y_test)
                 if test_grad is not None:
-                    test_grad += direct_sum(torch.autograd.grad(test_loss, self.last_layer.parameters(), create_graph=True))
+                    test_grad += direct_sum(
+                        torch.autograd.grad(
+                            test_loss, self.last_layer.parameters(), create_graph=True
+                        )
+                    )
                 else:
-                    test_grad = direct_sum(torch.autograd.grad(test_loss, self.last_layer.parameters(), create_graph=True))
+                    test_grad = direct_sum(
+                        torch.autograd.grad(
+                            test_loss, self.last_layer.parameters(), create_graph=True
+                        )
+                    )
             test_grad = test_grad.detach().cpu()
             for train_idx in range(len(self.X_train)):
-                train_grad = torch.load(self.save_dir/f"train_grad{train_idx}.pt")
+                train_grad = torch.load(self.save_dir / f"train_grad{train_idx}.pt")
                 attribution[test_idx, train_idx] = torch.dot(train_grad, test_grad)
         return attribution
 
@@ -124,16 +147,33 @@ class TracIn(ExampleBasedExplainer):
                 self.model.load_state_dict(torch.load(checkpoint), strict=False)
                 loss = self.loss_function(self.model(x_train), y_train)
                 if grad is not None:
-                    grad += direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True))
+                    grad += direct_sum(
+                        torch.autograd.grad(
+                            loss, self.last_layer.parameters(), create_graph=True
+                        )
+                    )
                 else:
-                    grad = direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True))
-            torch.save(grad.detach().cpu(), self.save_dir/f"train_grad{train_idx}.pt")
+                    grad = direct_sum(
+                        torch.autograd.grad(
+                            loss, self.last_layer.parameters(), create_graph=True
+                        )
+                    )
+            torch.save(grad.detach().cpu(), self.save_dir / f"train_grad{train_idx}.pt")
         self.train_grads = True
 
 
 class InfluenceFunctions(ExampleBasedExplainer):
-    def __init__(self, model: nn.Module,  X_train: torch.Tensor,  Y_train: torch.Tensor, train_loader: DataLoader,
-                 loss_function: callable, save_dir: Path, recursion_depth: int,  **kwargs):
+    def __init__(
+        self,
+        model: nn.Module,
+        X_train: torch.Tensor,
+        Y_train: torch.Tensor,
+        train_loader: DataLoader,
+        loss_function: callable,
+        save_dir: Path,
+        recursion_depth: int,
+        **kwargs,
+    ):
         super().__init__(model, X_train)
         self.last_layer = model.last_layer()
         self.train_loader = train_loader
@@ -143,16 +183,24 @@ class InfluenceFunctions(ExampleBasedExplainer):
         train_subset = TensorDataset(X_train, Y_train)
         self.subtrain_loader = DataLoader(train_subset, batch_size=1, shuffle=False)
         self.device = self.X_train.device
-        self.save_dir = save_dir/'influence_functions'
+        self.save_dir = save_dir / "influence_functions"
         self.recursion_depth = recursion_depth
         if not self.save_dir.exists():
             os.makedirs(self.save_dir)
 
-    def evaluate_ihvp(self,  damp: float = 1e-3, scale: float = 1000,) -> None:
+    def evaluate_ihvp(
+        self,
+        damp: float = 1e-3,
+        scale: float = 1000,
+    ) -> None:
         for train_idx, (x_train, y_train) in enumerate(self.subtrain_loader):
             x_train = x_train.to(self.device)
             loss = self.loss_function(self.model(x_train), y_train)
-            grad = direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True))
+            grad = direct_sum(
+                torch.autograd.grad(
+                    loss, self.last_layer.parameters(), create_graph=True
+                )
+            )
             ihvp = grad.detach().clone()
             train_sampler = iter(self.train_loader)
             for _ in range(self.recursion_depth):
@@ -162,7 +210,7 @@ class InfluenceFunctions(ExampleBasedExplainer):
                 ihvp_prev = ihvp.detach().clone()
                 hvp = direct_sum(self.hessian_vector_product(sampled_loss, ihvp_prev))
                 ihvp = grad + (1 - damp) * ihvp - hvp / scale
-            torch.save(ihvp.detach().cpu(), self.save_dir/f"train_ihvp{train_idx}.pt")
+            torch.save(ihvp.detach().cpu(), self.save_dir / f"train_ihvp{train_idx}.pt")
         self.ihvp = True
 
     def forward(self, x, y):
@@ -174,10 +222,14 @@ class InfluenceFunctions(ExampleBasedExplainer):
         for test_idx, (x_test, y_test) in enumerate(subtest_loader):
             x_test, y_test = x_test.to(self.device), y_test.to(self.device)
             test_loss = self.loss_function(self.model(x_test), y_test)
-            test_grad = direct_sum(torch.autograd.grad(test_loss, self.last_layer.parameters(), create_graph=True))
+            test_grad = direct_sum(
+                torch.autograd.grad(
+                    test_loss, self.last_layer.parameters(), create_graph=True
+                )
+            )
             test_grad = test_grad.detach().cpu()
             for train_idx in range(len(self.X_train)):
-                ihvp = torch.load(self.save_dir/f"train_ihvp{train_idx}.pt")
+                ihvp = torch.load(self.save_dir / f"train_ihvp{train_idx}.pt")
                 attribution[test_idx, train_idx] = torch.dot(ihvp, test_grad)
         return attribution
 
@@ -197,7 +249,11 @@ class InfluenceFunctions(ExampleBasedExplainer):
         """
 
         # First backprop
-        first_grads = direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), retain_graph=True, create_graph=True))
+        first_grads = direct_sum(
+            torch.autograd.grad(
+                loss, self.last_layer.parameters(), retain_graph=True, create_graph=True
+            )
+        )
 
         # Elementwise products
         elemwise_products = torch.dot(first_grads.flatten(), v.flatten())
@@ -220,7 +276,9 @@ class GraphExampleBasedExplainer(nn.Module, ABC):
 
 
 class GraphRepresentationSimilarity(GraphExampleBasedExplainer):
-    def __init__(self, model: nn.Module, data_train: GraphData, layer: nn.Module, **kwargs):
+    def __init__(
+        self, model: nn.Module, data_train: GraphData, layer: nn.Module, **kwargs
+    ):
         super().__init__(model, data_train)
         self.H = torch.empty(0)
 
@@ -236,12 +294,16 @@ class GraphRepresentationSimilarity(GraphExampleBasedExplainer):
 
     def forward(self, data: GraphData) -> torch.Tensor:
         self.model(data.x, data.edge_index, data.batch)
-        attribution = F.cosine_similarity(self.H_train.unsqueeze(0), self.H.unsqueeze(1), dim=-1).cpu()
+        attribution = F.cosine_similarity(
+            self.H_train.unsqueeze(0), self.H.unsqueeze(1), dim=-1
+        ).cpu()
         return attribution
 
 
 class GraphSimplEx(GraphExampleBasedExplainer):
-    def __init__(self, model: nn.Module,  data_train: GraphData, layer: nn.Module, **kwargs):
+    def __init__(
+        self, model: nn.Module, data_train: GraphData, layer: nn.Module, **kwargs
+    ):
         super().__init__(model, data_train)
         self.H = torch.empty(0)
 
@@ -262,11 +324,13 @@ class GraphSimplEx(GraphExampleBasedExplainer):
 
     @staticmethod
     def compute_weights(
-            H: torch.Tensor,
-            H_train: torch.Tensor,
-            n_epoch: int = 1000,
+        H: torch.Tensor,
+        H_train: torch.Tensor,
+        n_epoch: int = 1000,
     ) -> torch.Tensor:
-        preweights = torch.zeros((len(H), len(H_train)), requires_grad=True, device=H_train.device)
+        preweights = torch.zeros(
+            (len(H), len(H_train)), requires_grad=True, device=H_train.device
+        )
         optimizer = torch.optim.Adam([preweights])
         for epoch in range(n_epoch):
             optimizer.zero_grad()
@@ -279,11 +343,18 @@ class GraphSimplEx(GraphExampleBasedExplainer):
 
 
 class GraphTracIn(GraphExampleBasedExplainer):
-    def __init__(self, model: nn.Module, data_train: DataLoader, loss_function: callable, save_dir: Path,
-                 device: torch.device, **kwargs):
+    def __init__(
+        self,
+        model: nn.Module,
+        data_train: DataLoader,
+        loss_function: callable,
+        save_dir: Path,
+        device: torch.device,
+        **kwargs,
+    ):
         super().__init__(model, data_train)
         self.last_layer = model.last_layer()
-        self.save_dir = save_dir/'tracin'
+        self.save_dir = save_dir / "tracin"
         self.loss_function = loss_function
         self.checkpoints = model.checkpoints_files
         self.device = device
@@ -299,72 +370,124 @@ class GraphTracIn(GraphExampleBasedExplainer):
         data = data.to(self.device)
         for checkpoint in self.checkpoints:
             self.model.load_state_dict(torch.load(checkpoint), strict=False)
-            test_loss = self.loss_function(self.model(data.x, data.edge_index, data.batch), data.y)
+            test_loss = self.loss_function(
+                self.model(data.x, data.edge_index, data.batch), data.y
+            )
             if test_grad is not None:
-                test_grad += direct_sum(torch.autograd.grad(test_loss, self.last_layer.parameters(), create_graph=True))
+                test_grad += direct_sum(
+                    torch.autograd.grad(
+                        test_loss, self.last_layer.parameters(), create_graph=True
+                    )
+                )
             else:
-                test_grad = direct_sum(torch.autograd.grad(test_loss, self.last_layer.parameters(), create_graph=True))
+                test_grad = direct_sum(
+                    torch.autograd.grad(
+                        test_loss, self.last_layer.parameters(), create_graph=True
+                    )
+                )
         test_grad = test_grad.detach().cpu()
         for train_idx in range(len(self.data_train.dataset)):
-            train_grad = torch.load(self.save_dir/f"train_grad{train_idx}.pt")
+            train_grad = torch.load(self.save_dir / f"train_grad{train_idx}.pt")
             attribution[0, train_idx] = torch.dot(train_grad, test_grad)
         return attribution
 
     def compute_train_grads(self) -> None:
-        for idx, data in tqdm(enumerate(self.data_train), leave=False, unit='train example'):
+        for idx, data in tqdm(
+            enumerate(self.data_train), leave=False, unit="train example"
+        ):
             data = data.to(self.device)
             grad = None
             for checkpoint in self.checkpoints:
                 self.model.load_state_dict(torch.load(checkpoint), strict=False)
-                loss = self.loss_function(self.model(data.x, data.edge_index, data.batch), data.y)
+                loss = self.loss_function(
+                    self.model(data.x, data.edge_index, data.batch), data.y
+                )
                 if grad is not None:
-                    grad += direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True))
+                    grad += direct_sum(
+                        torch.autograd.grad(
+                            loss, self.last_layer.parameters(), create_graph=True
+                        )
+                    )
                 else:
-                    grad = direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True))
-            torch.save(grad.detach().cpu(), self.save_dir/f"train_grad{idx}.pt")
+                    grad = direct_sum(
+                        torch.autograd.grad(
+                            loss, self.last_layer.parameters(), create_graph=True
+                        )
+                    )
+            torch.save(grad.detach().cpu(), self.save_dir / f"train_grad{idx}.pt")
         self.train_grads = True
 
 
 class GraphInfluenceFunctions(GraphExampleBasedExplainer):
-    def __init__(self, model: nn.Module, data_train: DataLoader, train_sampler: DataLoader,
-                 loss_function: callable, save_dir: Path, recursion_depth: int, device: torch.device, **kwargs):
+    def __init__(
+        self,
+        model: nn.Module,
+        data_train: DataLoader,
+        train_sampler: DataLoader,
+        loss_function: callable,
+        save_dir: Path,
+        recursion_depth: int,
+        device: torch.device,
+        **kwargs,
+    ):
         super().__init__(model, data_train)
         self.last_layer = model.last_layer()
         self.train_sampler = train_sampler
         self.loss_function = loss_function
         self.ihvp = False
         self.device = device
-        self.save_dir = save_dir/'influence_functions'
+        self.save_dir = save_dir / "influence_functions"
         self.recursion_depth = recursion_depth
         if not self.save_dir.exists():
             os.makedirs(self.save_dir)
 
-    def evaluate_ihvp(self,  damp: float = 1e-3, scale: float = 1000,) -> None:
+    def evaluate_ihvp(
+        self,
+        damp: float = 1e-3,
+        scale: float = 1000,
+    ) -> None:
         for idx, data in enumerate(self.data_train):
             data = data.to(self.device)
-            loss = self.loss_function(self.model(data.x, data.edge_index, data.batch), data.y)
-            grad = direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), create_graph=True))
+            loss = self.loss_function(
+                self.model(data.x, data.edge_index, data.batch), data.y
+            )
+            grad = direct_sum(
+                torch.autograd.grad(
+                    loss, self.last_layer.parameters(), create_graph=True
+                )
+            )
             ihvp = grad.detach().clone()
             train_sampler = iter(self.train_sampler)
             for _ in range(self.recursion_depth):
                 data_sample = next(train_sampler)
                 data_sample = data_sample.to(self.device)
-                sampled_loss = self.loss_function(self.model(data_sample.x, data_sample.edge_index, data_sample.batch), data_sample.y)
+                sampled_loss = self.loss_function(
+                    self.model(
+                        data_sample.x, data_sample.edge_index, data_sample.batch
+                    ),
+                    data_sample.y,
+                )
                 ihvp_prev = ihvp.detach().clone()
                 hvp = direct_sum(self.hessian_vector_product(sampled_loss, ihvp_prev))
                 ihvp = grad + (1 - damp) * ihvp - hvp / scale
-            torch.save(ihvp.detach().cpu(), self.save_dir/f"train_ihvp{idx}.pt")
+            torch.save(ihvp.detach().cpu(), self.save_dir / f"train_ihvp{idx}.pt")
         self.ihvp = True
 
     def forward(self, data: GraphData):
         if not self.ihvp:
             self.evaluate_ihvp()
         attribution = torch.zeros(1, len(self.data_train.dataset))
-        test_loss = self.loss_function(self.model(data.x, data.edge_index, data.batch), data.y)
-        test_grad = direct_sum(torch.autograd.grad(test_loss, self.last_layer.parameters(), create_graph=True))
+        test_loss = self.loss_function(
+            self.model(data.x, data.edge_index, data.batch), data.y
+        )
+        test_grad = direct_sum(
+            torch.autograd.grad(
+                test_loss, self.last_layer.parameters(), create_graph=True
+            )
+        )
         test_grad = test_grad.detach().cpu()
         for train_idx in range(len(self.data_train.dataset)):
-            ihvp = torch.load(self.save_dir/f"train_ihvp{train_idx}.pt")
+            ihvp = torch.load(self.save_dir / f"train_ihvp{train_idx}.pt")
             attribution[0, train_idx] = torch.dot(ihvp, test_grad)
         return attribution
 
@@ -384,7 +507,11 @@ class GraphInfluenceFunctions(GraphExampleBasedExplainer):
         """
 
         # First backprop
-        first_grads = direct_sum(torch.autograd.grad(loss, self.last_layer.parameters(), retain_graph=True, create_graph=True))
+        first_grads = direct_sum(
+            torch.autograd.grad(
+                loss, self.last_layer.parameters(), retain_graph=True, create_graph=True
+            )
+        )
 
         # Elementwise products
         elemwise_products = torch.dot(first_grads.flatten(), v.flatten())

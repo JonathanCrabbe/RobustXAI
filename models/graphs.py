@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 
 class ClassifierMutagenicity(torch.nn.Module):
-    def __init__(self, dim: int, name: str = 'model') -> None:
+    def __init__(self, dim: int, name: str = "model") -> None:
         super(ClassifierMutagenicity, self).__init__()
         num_features = 14
         self.latent_dim = dim
@@ -57,7 +57,12 @@ class ClassifierMutagenicity(torch.nn.Module):
     def last_layer(self) -> nn.Module or None:
         return self.lin2
 
-    def train_epoch(self, device: torch.device, dataloader: DataLoader, optimizer: torch.optim.Optimizer) -> np.ndarray:
+    def train_epoch(
+        self,
+        device: torch.device,
+        dataloader: DataLoader,
+        optimizer: torch.optim.Optimizer,
+    ) -> np.ndarray:
         """
         One epoch of the training loop
         Args:
@@ -74,7 +79,9 @@ class ClassifierMutagenicity(torch.nn.Module):
         for data in train_bar:
             data = data.to(device)
             optimizer.zero_grad()
-            loss = self.criterion(self.forward(data.x, data.edge_index, data.batch), data.y)
+            loss = self.criterion(
+                self.forward(data.x, data.edge_index, data.batch), data.y
+            )
             loss.backward()
             optimizer.step()
             loss_meter.update(loss.item(), data.num_graphs)
@@ -82,7 +89,9 @@ class ClassifierMutagenicity(torch.nn.Module):
             train_loss.append(loss.detach().cpu().numpy())
         return np.mean(train_loss)
 
-    def test_epoch(self, device: torch.device, dataloader: torch.utils.data.DataLoader) -> tuple:
+    def test_epoch(
+        self, device: torch.device, dataloader: torch.utils.data.DataLoader
+    ) -> tuple:
         """
         One epoch of the testing loop
         Args:
@@ -110,15 +119,15 @@ class ClassifierMutagenicity(torch.nn.Module):
         return np.mean(test_loss), np.mean(test_acc)
 
     def fit(
-            self,
-            device: torch.device,
-            train_loader: DataLoader,
-            test_loader: DataLoader,
-            save_dir: pathlib.Path,
-            lr: int = 1e-03,
-            n_epoch: int = 200,
-            patience: int = 20,
-            checkpoint_interval: int = -1,
+        self,
+        device: torch.device,
+        train_loader: DataLoader,
+        test_loader: DataLoader,
+        save_dir: pathlib.Path,
+        lr: int = 1e-03,
+        n_epoch: int = 200,
+        patience: int = 20,
+        checkpoint_interval: int = -1,
     ) -> None:
         """
         Fit the classifier on the training set
@@ -161,7 +170,9 @@ class ClassifierMutagenicity(torch.nn.Module):
             if checkpoint_interval > 0 and epoch % checkpoint_interval == 0:
                 n_checkpoint = 1 + epoch // checkpoint_interval
                 logging.info(f"Saving checkpoint {n_checkpoint} in {save_dir}")
-                path_to_checkpoint = save_dir / f"{self.name}_checkpoint{n_checkpoint}.pt"
+                path_to_checkpoint = (
+                    save_dir / f"{self.name}_checkpoint{n_checkpoint}.pt"
+                )
                 self.checkpoints_files.append(str(path_to_checkpoint))
                 torch.save(self.state_dict(), path_to_checkpoint)
             if waiting_epoch == patience:
@@ -192,8 +203,8 @@ class ClassifierMutagenicity(torch.nn.Module):
 
         with open(path_to_metadata) as metadata_file:
             metadata = json.load(metadata_file)
-        self.latent_dim = metadata['latent_dim']
-        self.checkpoints_files = metadata['checkpoint_files']
+        self.latent_dim = metadata["latent_dim"]
+        self.checkpoints_files = metadata["checkpoint_files"]
         return metadata
 
     def save_metadata(self, directory: pathlib.Path, **kwargs) -> None:

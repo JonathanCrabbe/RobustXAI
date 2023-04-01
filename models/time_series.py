@@ -37,7 +37,7 @@ class ClassifierECG(ABC, nn.Module):
         device: torch.device,
         dataloader: torch.utils.data.DataLoader,
         optimizer: torch.optim.Optimizer,
-        augmentation: bool
+        augmentation: bool,
     ) -> np.ndarray:
         """
         One epoch of the training loop
@@ -109,7 +109,7 @@ class ClassifierECG(ABC, nn.Module):
         n_epoch: int = 200,
         patience: int = 20,
         checkpoint_interval: int = -1,
-        augmentation: bool = True
+        augmentation: bool = True,
     ) -> None:
         """
         Fit the classifier on the training set
@@ -152,7 +152,9 @@ class ClassifierECG(ABC, nn.Module):
             if checkpoint_interval > 0 and epoch % checkpoint_interval == 0:
                 n_checkpoint = 1 + epoch // checkpoint_interval
                 logging.info(f"Saving checkpoint {n_checkpoint} in {save_dir}")
-                path_to_checkpoint = save_dir / f"{self.name}_checkpoint{n_checkpoint}.pt"
+                path_to_checkpoint = (
+                    save_dir / f"{self.name}_checkpoint{n_checkpoint}.pt"
+                )
                 self.checkpoints_files.append(str(path_to_checkpoint))
                 torch.save(self.state_dict(), path_to_checkpoint)
             if waiting_epoch == patience:
@@ -183,8 +185,8 @@ class ClassifierECG(ABC, nn.Module):
 
         with open(path_to_metadata) as metadata_file:
             metadata = json.load(metadata_file)
-        self.latent_dim = metadata['latent_dim']
-        self.checkpoints_files = metadata['checkpoint_files']
+        self.latent_dim = metadata["latent_dim"]
+        self.checkpoints_files = metadata["checkpoint_files"]
         return metadata
 
     def save_metadata(self, directory: pathlib.Path, **kwargs) -> None:
@@ -210,9 +212,15 @@ class ClassifierECG(ABC, nn.Module):
 class StandardCNN(ClassifierECG):
     def __init__(self, latent_dim: int, name: str = "model"):
         super(StandardCNN, self).__init__(latent_dim, name)
-        self.cnn1 = nn.Conv1d(1, 16, kernel_size=3, stride=1, padding=1, padding_mode='circular')
-        self.cnn2 = nn.Conv1d(16, 64, kernel_size=3, stride=1, padding=1, padding_mode='circular')
-        self.cnn3 = nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=1, padding_mode='circular')
+        self.cnn1 = nn.Conv1d(
+            1, 16, kernel_size=3, stride=1, padding=1, padding_mode="circular"
+        )
+        self.cnn2 = nn.Conv1d(
+            16, 64, kernel_size=3, stride=1, padding=1, padding_mode="circular"
+        )
+        self.cnn3 = nn.Conv1d(
+            64, 128, kernel_size=3, stride=1, padding=1, padding_mode="circular"
+        )
         self.maxpool1 = nn.MaxPool1d(2)
         self.maxpool2 = nn.MaxPool1d(2)
         self.maxpool3 = nn.MaxPool1d(2)
@@ -261,9 +269,15 @@ class StandardCNN(ClassifierECG):
 class AllCNN(ClassifierECG):
     def __init__(self, latent_dim: int, name: str = "model"):
         super(AllCNN, self).__init__(latent_dim, name)
-        self.cnn1 = nn.Conv1d(1, 16, kernel_size=3, stride=1, padding=1, padding_mode='circular')
-        self.cnn2 = nn.Conv1d(16, 64, kernel_size=3, stride=1, padding=1, padding_mode='circular')
-        self.cnn3 = nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=1, padding_mode='circular')
+        self.cnn1 = nn.Conv1d(
+            1, 16, kernel_size=3, stride=1, padding=1, padding_mode="circular"
+        )
+        self.cnn2 = nn.Conv1d(
+            16, 64, kernel_size=3, stride=1, padding=1, padding_mode="circular"
+        )
+        self.cnn3 = nn.Conv1d(
+            64, 128, kernel_size=3, stride=1, padding=1, padding_mode="circular"
+        )
         self.fc1 = nn.Linear(128, latent_dim)
         self.fc2 = nn.Linear(latent_dim, latent_dim)
         self.out = nn.Linear(latent_dim, 2)
@@ -302,7 +316,3 @@ class AllCNN(ClassifierECG):
 
     def last_layer(self) -> nn.Module or None:
         return self.out
-
-
-
-
