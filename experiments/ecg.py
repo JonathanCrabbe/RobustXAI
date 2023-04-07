@@ -427,53 +427,6 @@ def enforce_invariance(
         enforce_invariance_plot(save_dir, "ecg")
 
 
-def understand_randomness(
-    random_seed: int,
-    latent_dim: int,
-    batch_size: int,
-    plot: bool,
-    model_name: str,
-    model_dir: Path = Path.cwd() / f"results/ecg/",
-    data_dir: Path = Path.cwd() / "datasets/ecg",
-) -> None:
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    set_random_seed(random_seed)
-    test_set = ECGDataset(data_dir, train=False, balance_dataset=False)
-    test_loader = DataLoader(test_set, batch_size, shuffle=True)
-    models = {
-        "All-CNN": AllCNN(latent_dim, f"{model_name}_allcnn"),
-        "Random-CNN": StandardCNN(latent_dim),
-    }
-    model_dir = model_dir / model_name
-    save_dir = model_dir / "understand_randomness"
-    if not save_dir.exists():
-        os.makedirs(save_dir)
-    model = AllCNN(latent_dim).to(device)
-    model.load_state_dict(
-        torch.load(model_dir / f"{model_name}_allcnn.pt"), strict=False
-    )
-    for model_type in models:
-        predictions = []
-        model = models[model_type]
-        if model_type != "Random-CNN":
-            model.load_state_dict(
-                torch.load(model_dir / f"{model.name}.pt"), strict=False
-            )
-        model.to(device)
-        model.eval()
-        for x, y in test_loader:
-            x = x.to(device)
-            y = y.to(device)
-            predictions.append(model(x).detach().cpu().numpy())
-            T = x.shape[-1]
-        predictions = np.concatenate(predictions)
-        baseline = (
-            model(torch.zeros((1, 1, T), device=device)).detach().cpu().numpy()
-        )  # Record baseline prediction
-        baseline = np.tile(baseline, [len(predictions), 1])
-        logging.info(f"{model_type}: {mean_absolute_error(predictions, baseline):.3g}")
-
-
 def sensitivity_comparison(
     random_seed: int,
     latent_dim: int,
@@ -596,10 +549,6 @@ if __name__ == "__main__":
                 args.plot,
                 model_name,
                 n_test=args.n_test,
-            )
-        case "understand_randomness":
-            understand_randomness(
-                args.seed, args.latent_dim, args.batch_size, args.plot, model_name
             )
         case "sensitivity_comparison":
             sensitivity_comparison(

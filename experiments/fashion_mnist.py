@@ -107,7 +107,7 @@ def feature_importance(
         )
         logging.info(f"Explanation equivariance: {torch.mean(explanation_equiv):.3g}")
         for inv, equiv in zip(model_inv, explanation_equiv):
-            metrics.append(["GNN", attr_name, inv.item(), equiv.item()])
+            metrics.append(["CNN", attr_name, inv.item(), equiv.item()])
     metrics_df = pd.DataFrame(
         data=metrics,
         columns=[
