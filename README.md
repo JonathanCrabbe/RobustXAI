@@ -1,5 +1,6 @@
 # Explanation Invariance and Equivariance
 
+![image](illustration.png "Explanation Invariance and Equivariance")
 
 Code Author: Jonathan Crabbé ([jc2133@cam.ac.uk](mailto:jc2133@cam.ac.uk))
 
