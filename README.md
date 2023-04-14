@@ -5,7 +5,7 @@
 Code Author: Jonathan Crabbé ([jc2133@cam.ac.uk](mailto:jc2133@cam.ac.uk))
 
 This repository contains the implementation of the explanation invariance and equivariance metrics, a framework to evaluate the robustness of interpretability methods.
-For more details, please read our [paper](): 'Evaluating the Robustness of Interpretability Methods through Explanation Invariance and Equivariance'.
+For more details, please read our [paper](https://arxiv.org/abs/2304.06715): 'Evaluating the Robustness of Interpretability Methods through Explanation Invariance and Equivariance'.
 
 ## 1. Installation
 
@@ -132,6 +132,13 @@ The resulting plots and data are saved [here](results/mnet).
 If you use this code, please cite the associated paper:
 
 ```
-
+@misc{crabbé2023evaluating,
+      title={Evaluating the Robustness of Interpretability Methods through Explanation Invariance and Equivariance}, 
+      author={Jonathan Crabbé and Mihaela van der Schaar},
+      year={2023},
+      eprint={2304.06715},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG}
+}
 ```
  
