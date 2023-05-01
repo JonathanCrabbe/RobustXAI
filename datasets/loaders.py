@@ -6,10 +6,11 @@ import numpy as np
 import networkx as nx
 import random
 import h5py
+import pytorch_lightning as pl
 from torchvision.transforms import transforms
 from pathlib import Path
-from torch.utils.data import Dataset, SubsetRandomSampler
-from torchvision.datasets import FashionMNIST
+from torch.utils.data import Dataset, SubsetRandomSampler, random_split
+from torchvision.datasets import FashionMNIST, CIFAR100
 from imblearn.over_sampling import SMOTE
 from abc import ABC, abstractmethod
 from torch_geometric.datasets import TUDataset
@@ -648,3 +649,71 @@ class FashionMnistDataset(ConceptDataset, FashionMNIST):
         )
         rand_perm = torch.randperm(len(X))
         return X[rand_perm], C[rand_perm]
+
+
+class Cifar100Dataset(pl.LightningDataModule):
+    def __init__(self, data_dir: Path, batch_size: int = 32):
+        super().__init__()
+        self.data_dir = data_dir
+        self.batch_size = batch_size
+
+    def setup(self, stage: str):
+        normalize = transforms.Normalize(
+            mean=np.array([125.3, 123.0, 113.9]) / 255.0,
+            std=np.array([63.0, 62.1, 66.7]) / 255.0,
+        )
+        train_transform = transforms.Compose(
+            [
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                normalize,
+            ]
+        )
+        valid_transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                normalize,
+            ]
+        )
+        self.cifar100_test = CIFAR100(
+            self.data_dir, train=False, download=True, transform=valid_transform
+        )
+        self.cifar100_train = CIFAR100(
+            self.data_dir, train=True, download=True, transform=train_transform
+        )
+        self.cifar100_val = CIFAR100(
+            self.data_dir, train=True, download=True, transform=valid_transform
+        )
+        num_train = len(self.cifar100_train)
+        indices = list(range(num_train))
+        split = int(np.floor(0.2 * num_train))
+        np.random.shuffle(indices)
+        train_idx, valid_idx = indices[split:], indices[:split]
+        self.train_sampler = SubsetRandomSampler(train_idx)
+        self.valid_sampler = SubsetRandomSampler(valid_idx)
+
+    def train_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.cifar100_train,
+            batch_size=self.batch_size,
+            sampler=self.train_sampler,
+        )
+
+    def val_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.cifar100_val, batch_size=self.batch_size, sampler=self.valid_sampler
+        )
+
+    def test_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.cifar100_test, batch_size=self.batch_size
+        )
+
+    def predict_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.cifar100_test, batch_size=self.batch_size
+        )
+
+    def teardown(self, stage: str):
+        ...

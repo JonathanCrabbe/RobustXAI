@@ -163,4 +163,5 @@ datasets/ecg/
 datasets/mut/
 datasets/mnet/
 datasets/fashion_mnist/
+datasets/cifar100/
 results/
