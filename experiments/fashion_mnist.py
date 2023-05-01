@@ -11,7 +11,11 @@ from models.images import AllCNN, StandardCNN
 from pathlib import Path
 from datasets.loaders import FashionMnistDataset
 from utils.misc import set_random_seed
-from utils.plots import single_robustness_plots, relaxing_invariance_plots
+from utils.plots import (
+    single_robustness_plots,
+    relaxing_invariance_plots,
+    enforce_invariance_plot,
+)
 from captum.attr import (
     IntegratedGradients,
     GradientShap,
@@ -19,7 +23,6 @@ from captum.attr import (
     FeatureAblation,
     Occlusion,
     DeepLift,
-    LRP,
 )
 from interpretability.example import (
     SimplEx,
@@ -27,13 +30,14 @@ from interpretability.example import (
     RepresentationSimilarity,
     TracIn,
 )
-from interpretability.concept import CAR, CAV
+from interpretability.concept import CAR, CAV, ConceptExplainer
 from utils.symmetries import Translation2D
 from interpretability.robustness import (
     model_invariance_exact,
     explanation_equivariance_exact,
     explanation_invariance_exact,
     accuracy,
+    InvariantExplainer,
 )
 from interpretability.feature import FeatureImportance
 from torch.utils.data import Subset, RandomSampler
@@ -360,6 +364,81 @@ def concept_importance(
         relaxing_invariance_plots(save_dir, "ecg", "concept_importance")
 
 
+def enforce_invariance(
+    random_seed: int,
+    latent_dim: int,
+    batch_size: int,
+    plot: bool,
+    model_name: str = "model",
+    model_dir: Path = Path.cwd() / f"results/fashion_mnist/",
+    data_dir: Path = Path.cwd() / "datasets/fashion_mnist",
+    n_test: int = 1000,
+    concept_set_size: int = 100,
+    max_displacement: int = 10,
+) -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    set_random_seed(random_seed)
+    train_set = FashionMnistDataset(
+        data_dir, train=True, max_displacement=max_displacement
+    )
+    test_set = FashionMnistDataset(
+        data_dir, train=False, max_displacement=max_displacement
+    )
+    test_subset = Subset(test_set, torch.randperm(len(test_set))[:n_test])
+    test_loader = DataLoader(test_subset, batch_size)
+    models = {"All-CNN": AllCNN(latent_dim, f"{model_name}_allcnn")}
+    attr_methods = {"CAV": CAV, "CAR": CAR}
+    model_dir = model_dir / model_name
+    save_dir = model_dir / "enforce_invariance"
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+    translation = Translation2D(max_displacement)
+    group_size = len(translation.get_all_symmetries(None))
+    metrics = []
+    for model_type in models:
+        logging.info(f"Now working with {model_type} classifier")
+        model = models[model_type]
+        model.load_metadata(model_dir)
+        model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
+        model.to(device).eval()
+        model_inv = model_invariance_exact(model, translation, test_loader, device)
+        logging.info(f"Model invariance: {torch.mean(model_inv):.3g}")
+        for attr_name in attr_methods:
+            logging.info(f"Now working with {attr_name} explainer")
+            attr_method = attr_methods[attr_name](
+                model, train_set, n_classes=2, layer=model.cnn3
+            )
+            if isinstance(attr_method, ConceptExplainer):
+                attr_method.fit(device, concept_set_size)
+            for N_inv in [1, 5, 50, int(group_size / 2), int(group_size)]:
+                logging.info(
+                    f"Now working with invariant explainer with N_inv = {N_inv}"
+                )
+                inv_method = InvariantExplainer(
+                    attr_method,
+                    translation,
+                    N_inv,
+                    isinstance(attr_method, ConceptExplainer),
+                )
+                explanation_inv = explanation_invariance_exact(
+                    inv_method, translation, test_loader, device, similarity=accuracy
+                )
+                logging.info(
+                    f"N_inv = {N_inv} - Explanation invariance = {torch.mean(explanation_inv):.3g}"
+                )
+                for inv_expl in explanation_inv:
+                    metrics.append(
+                        [model_type, f"{attr_name}-Equiv", N_inv, inv_expl.item()]
+                    )
+    metrics_df = pd.DataFrame(
+        data=metrics,
+        columns=["Model Type", "Explanation", "N_inv", "Explanation Invariance"],
+    )
+    metrics_df.to_csv(save_dir / "metrics.csv", index=False)
+    if plot:
+        enforce_invariance_plot(save_dir, "fashion_mnist")
+
+
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -399,6 +478,15 @@ if __name__ == "__main__":
             )
         case "concept_importance":
             concept_importance(
+                args.seed,
+                args.latent_dim,
+                args.batch_size,
+                args.plot,
+                model_name,
+                n_test=args.n_test,
+            )
+        case "enforce_invariance":
+            enforce_invariance(
                 args.seed,
                 args.latent_dim,
                 args.batch_size,
