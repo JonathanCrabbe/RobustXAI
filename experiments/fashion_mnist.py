@@ -203,10 +203,10 @@ def example_importance(
         "Augmented-CNN": StandardCNN(latent_dim, f"{model_name}_augmented"),
     }
     attr_methods = {
+        "Representation Similarity": RepresentationSimilarity,
         "TracIn": TracIn,
         "Influence Functions": InfluenceFunctions,
         "SimplEx": SimplEx,
-        "Representation Similarity": RepresentationSimilarity,
     }
     model_dir = model_dir / model_name
     save_dir = model_dir / "example_importance"
