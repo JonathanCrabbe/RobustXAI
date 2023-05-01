@@ -6,7 +6,6 @@ import pandas as pd
 import torch.nn as nn
 import itertools
 from torch.utils.data import DataLoader
-from torchvision.transforms import transforms
 from models.images import AllCNN, StandardCNN
 from pathlib import Path
 from datasets.loaders import FashionMnistDataset
@@ -117,10 +116,11 @@ def feature_importance(
     small_test_set = Subset(test_set, torch.randperm(len(test_set))[:n_test])
     test_loader = DataLoader(small_test_set, batch_size=batch_size, shuffle=False)
     model_dir = model_dir / model_name
-    model = AllCNN(latent_dim)
-    model.load_metadata(model_dir)
-    model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
-    model.to(device).eval()
+    models = {
+        "All-CNN": AllCNN(latent_dim, f"{model_name}_allcnn"),
+        "Standard-CNN": StandardCNN(latent_dim, f"{model_name}_standard"),
+        "Augmented-CNN": StandardCNN(latent_dim, f"{model_name}_augmented"),
+    }
     attr_methods = {
         "DeepLift": DeepLift,
         "Integrated Gradients": IntegratedGradients,
@@ -134,27 +134,34 @@ def feature_importance(
         os.makedirs(save_dir)
     translation = Translation2D(max_dispacement=max_displacement)
     metrics = []
-    logging.info(f"Now working with Fashion Mnist classifier")
-    model_inv = model_invariance_exact(model, translation, test_loader, device)
-    logging.info(f"Model invariance: {torch.mean(model_inv).item():.3g}")
-    for attr_name in attr_methods:
-        logging.info(f"Now working with {attr_name}")
-        feat_importance = FeatureImportance(attr_methods[attr_name](model))
-        explanation_equiv = explanation_equivariance_exact(
-            feat_importance, translation, test_loader, device
+    for model_type in models:
+        logging.info(f"Now working with {model_type} classifier")
+        model = models[model_type]
+        model.load_metadata(model_dir)
+        model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
+        model.to(device).eval()
+        model_inv = model_invariance_exact(model, translation, test_loader, device)
+        logging.info(f"Model invariance: {torch.mean(model_inv).item():.3g}")
+        for attr_name in attr_methods:
+            logging.info(f"Now working with {attr_name}")
+            feat_importance = FeatureImportance(attr_methods[attr_name](model))
+            explanation_equiv = explanation_equivariance_exact(
+                feat_importance, translation, test_loader, device
+            )
+            logging.info(
+                f"Explanation equivariance: {torch.mean(explanation_equiv):.3g}"
+            )
+            for inv, equiv in zip(model_inv, explanation_equiv):
+                metrics.append([model_type, attr_name, inv.item(), equiv.item()])
+        metrics_df = pd.DataFrame(
+            data=metrics,
+            columns=[
+                "Model Type",
+                "Explanation",
+                "Model Invariance",
+                "Explanation Equivariance",
+            ],
         )
-        logging.info(f"Explanation equivariance: {torch.mean(explanation_equiv):.3g}")
-        for inv, equiv in zip(model_inv, explanation_equiv):
-            metrics.append(["CNN", attr_name, inv.item(), equiv.item()])
-    metrics_df = pd.DataFrame(
-        data=metrics,
-        columns=[
-            "Model Type",
-            "Explanation",
-            "Model Invariance",
-            "Explanation Equivariance",
-        ],
-    )
     metrics_df.to_csv(save_dir / "metrics.csv", index=False)
     if plot:
         single_robustness_plots(save_dir, "fashion_mnist", "feature_importance")
