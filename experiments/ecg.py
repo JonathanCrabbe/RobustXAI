@@ -15,7 +15,6 @@ from utils.misc import set_random_seed
 from utils.plots import (
     single_robustness_plots,
     relaxing_invariance_plots,
-    mc_convergence_plot,
     enforce_invariance_plot,
     sensitivity_plot,
 )
@@ -42,7 +41,6 @@ from captum.attr import (
     FeatureAblation,
     Occlusion,
 )
-from sklearn.metrics import mean_absolute_error
 
 
 def train_ecg_model(
@@ -100,7 +98,6 @@ def feature_importance(
     data_dir: Path = Path.cwd() / "datasets/ecg",
     n_test: int = 1000,
 ) -> None:
-
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     set_random_seed(random_seed)
     test_set = ECGDataset(data_dir, train=False, balance_dataset=False)
@@ -437,7 +434,6 @@ def sensitivity_comparison(
     data_dir: Path = Path.cwd() / "datasets/ecg",
     n_test: int = 1000,
 ) -> None:
-
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     set_random_seed(random_seed)
     test_set = ECGDataset(data_dir, train=False, balance_dataset=False)

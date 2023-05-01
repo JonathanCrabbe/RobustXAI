@@ -6,8 +6,10 @@ import numpy as np
 import networkx as nx
 import random
 import h5py
+from torchvision.transforms import transforms
 from pathlib import Path
 from torch.utils.data import Dataset, SubsetRandomSampler
+from torchvision.datasets import FashionMNIST
 from imblearn.over_sampling import SMOTE
 from abc import ABC, abstractmethod
 from torch_geometric.datasets import TUDataset
@@ -464,7 +466,7 @@ class ModelNet40Dataset(ConceptDataset):
         all_files_adr = []
         all_save_adr = []
 
-        for (category, num) in zip(classes.keys(), classes.values()):
+        for category, num in zip(classes.keys(), classes.values()):
             new_dir = root_dir / Path(category) / folder
 
             for file in os.listdir(new_dir):
@@ -489,7 +491,7 @@ class ModelNet40Dataset(ConceptDataset):
         classes = {folder: i for i, folder in enumerate(folders)}
         files = []
 
-        for (category, num) in zip(classes.keys(), classes.values()):
+        for category, num in zip(classes.keys(), classes.values()):
             new_dir = root_dir / Path(category) / folder
 
             for file in os.listdir(new_dir):
@@ -612,3 +614,37 @@ class ModelNet40Dataset(ConceptDataset):
         mean = np.mean(z, (0, 1), keepdims=True)
         std = np.std(z, (0, 1), keepdims=True)
         return (z - mean) / std
+
+
+class FashionMnistDataset(ConceptDataset, FashionMNIST):
+    def __init__(self, data_dir: Path, train: bool, max_displacement: int) -> None:
+        transform = transforms.Compose(
+            [transforms.ToTensor(), transforms.Pad(max_displacement)]
+        )
+        super().__init__(data_dir, train, transform, download=True)
+
+    def concept_names(self):
+        return ["Top", "Shoe"]
+
+    def generate_concept_dataset(self, concept_id: int, concept_set_size: int) -> tuple:
+        labels = self.targets
+        concept_label_sets = {"Top": [0, 2, 3, 4, 6], "Shoe": [5, 7, 9]}
+        mask = torch.isin(
+            labels, torch.Tensor(concept_label_sets[self.concept_names()[concept_id]])
+        )
+        positive_idx = torch.nonzero(mask).flatten()
+        negative_idx = torch.nonzero(~mask).flatten()
+        positive_loader = torch.utils.data.DataLoader(
+            self, batch_size=concept_set_size, sampler=SubsetRandomSampler(positive_idx)
+        )
+        negative_loader = torch.utils.data.DataLoader(
+            self, batch_size=concept_set_size, sampler=SubsetRandomSampler(negative_idx)
+        )
+        X_pos, C_pos = next(iter(positive_loader))
+        X_neg, C_neg = next(iter(negative_loader))
+        X = torch.concatenate((X_pos, X_neg), 0)
+        C = torch.concatenate(
+            (torch.ones(concept_set_size), torch.zeros(concept_set_size)), 0
+        )
+        rand_perm = torch.randperm(len(X))
+        return X[rand_perm], C[rand_perm]

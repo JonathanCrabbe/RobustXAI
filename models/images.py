@@ -5,7 +5,7 @@ import pathlib
 import json
 import numpy as np
 import torch.nn.functional as F
-from utils.symmetries import Translation1D
+from utils.symmetries import Translation2D
 from tqdm import tqdm
 from utils.metrics import AverageMeter
 from random import randint
@@ -55,6 +55,10 @@ class ClassifierFashionMnist(ABC, nn.Module):
         for images_batch, label_batch in train_bar:
             images_batch = images_batch.to(device)
             label_batch = label_batch.to(device)
+            H, W = images_batch.shape[-2:]
+            if augmentation:
+                transl = Translation2D(randint(0, H), randint(0, W))
+                images_batch = transl(images_batch)
             pred_batch = self.forward(images_batch)
             loss = self.criterion(pred_batch, label_batch)
             optimizer.zero_grad()
@@ -229,6 +233,58 @@ class AllCNN(ClassifierFashionMnist):
         x = F.relu(x)
         x = self.cnn3(x)
         x = torch.mean(x, dim=(-2, -1))
+        x = self.fc1(x)
+        x = self.leaky_relu(x)
+        x = self.fc2(x)
+        x = self.leaky_relu(x)
+        x = self.out(x)
+        return x
+
+    def representation(self, x):
+        x = self.cnn1(x)
+        x = F.relu(x)
+        x = self.cnn2(x)
+        x = F.relu(x)
+        x = self.cnn3(x)
+        x = torch.mean(x, dim=-1)
+        x = self.fc1(x)
+        return x
+
+    def representation_to_output(self, x):
+        x = self.leaky_relu(x)
+        x = self.fc2(x)
+        x = self.leaky_relu(x)
+        x = self.out(x)
+        return x
+
+    def last_layer(self) -> nn.Module or None:
+        return self.out
+
+
+class StandardCNN(ClassifierFashionMnist):
+    def __init__(self, latent_dim: int, name: str = "model"):
+        super(StandardCNN, self).__init__(latent_dim, name)
+        self.cnn1 = nn.Conv2d(
+            1, 16, kernel_size=3, stride=1, padding=1, padding_mode="circular"
+        )
+        self.cnn2 = nn.Conv2d(
+            16, 64, kernel_size=3, stride=1, padding=1, padding_mode="circular"
+        )
+        self.cnn3 = nn.Conv2d(
+            64, 128, kernel_size=3, stride=1, padding=1, padding_mode="circular"
+        )
+        self.fc1 = nn.Linear(294912, latent_dim)
+        self.fc2 = nn.Linear(latent_dim, latent_dim)
+        self.out = nn.Linear(latent_dim, 10)
+        self.leaky_relu = nn.LeakyReLU(inplace=True)
+
+    def forward(self, x):
+        x = self.cnn1(x)
+        x = F.relu(x)
+        x = self.cnn2(x)
+        x = F.relu(x)
+        x = self.cnn3(x)
+        x = torch.flatten(x, start_dim=1)
         x = self.fc1(x)
         x = self.leaky_relu(x)
         x = self.fc2(x)
