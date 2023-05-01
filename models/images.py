@@ -690,16 +690,16 @@ class Wide_ResNet(pl.LightningModule):
         yhat = self.forward(x)
         loss = F.cross_entropy(yhat, y)
         acc = torch.sum(y == torch.argmax(yhat, dim=-1)) / len(y)
-        self.log("val/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("val/acc", acc, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("val/loss", loss, on_epoch=True, prog_bar=True)
+        self.log("val/acc", acc, on_epoch=True, prog_bar=True)
 
     def test_step(self, batch, batch_idx):
         x, y = batch
         yhat = self.forward(x)
         loss = F.cross_entropy(yhat, y)
         acc = torch.sum(y == torch.argmax(yhat, dim=-1)) / len(y)
-        self.log("test/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
-        self.log("test/acc", acc, on_step=True, on_epoch=True, prog_bar=True)
+        self.log("test/loss", loss, on_epoch=True, prog_bar=True)
+        self.log("test/acc", acc, on_epoch=True, prog_bar=True)
 
     def configure_optimizers(self):
         # optimizer as in "Learning Steerable Filters for Rotation Equivariant CNNs"
