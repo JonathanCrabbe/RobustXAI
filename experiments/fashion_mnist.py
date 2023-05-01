@@ -18,6 +18,8 @@ from captum.attr import (
     FeaturePermutation,
     FeatureAblation,
     Occlusion,
+    DeepLift,
+    LRP,
 )
 from interpretability.example import (
     SimplEx,
@@ -116,6 +118,7 @@ def feature_importance(
     model.load_state_dict(torch.load(model_dir / f"{model.name}.pt"), strict=False)
     model.to(device).eval()
     attr_methods = {
+        "DeepLift": DeepLift,
         "Integrated Gradients": IntegratedGradients,
         "Gradient Shap": GradientShap,
         "Feature Permutation": FeaturePermutation,

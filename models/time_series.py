@@ -227,7 +227,8 @@ class StandardCNN(ClassifierECG):
         self.fc1 = nn.Linear(2944, latent_dim)
         self.fc2 = nn.Linear(latent_dim, latent_dim)
         self.out = nn.Linear(self.latent_dim, 2)
-        self.leaky_relu = nn.LeakyReLU(inplace=True)
+        self.leaky_relu1 = nn.LeakyReLU(inplace=False)
+        self.leaky_relu2 = nn.LeakyReLU(inplace=False)
 
     def forward(self, x):
         x = self.cnn1(x)
@@ -238,9 +239,9 @@ class StandardCNN(ClassifierECG):
         x = self.maxpool3(x)
         x = x.view(x.shape[0], -1)
         x = self.fc1(x)
-        x = self.leaky_relu(x)
+        x = self.leaky_relu1(x)
         x = self.fc2(x)
-        x = self.leaky_relu(x)
+        x = self.leaky_relu2(x)
         x = self.out(x)
         return x
 
@@ -256,9 +257,9 @@ class StandardCNN(ClassifierECG):
         return x
 
     def representation_to_output(self, x):
-        x = self.leaky_relu(x)
+        x = self.leaky_relu1(x)
         x = self.fc2(x)
-        x = self.leaky_relu(x)
+        x = self.leaky_relu2(x)
         x = self.out(x)
         return x
 
@@ -281,7 +282,8 @@ class AllCNN(ClassifierECG):
         self.fc1 = nn.Linear(128, latent_dim)
         self.fc2 = nn.Linear(latent_dim, latent_dim)
         self.out = nn.Linear(latent_dim, 2)
-        self.leaky_relu = nn.LeakyReLU(inplace=True)
+        self.leaky_relu1 = nn.LeakyReLU(inplace=False)
+        self.leaky_relu2 = nn.LeakyReLU(inplace=False)
 
     def forward(self, x):
         x = self.cnn1(x)
@@ -291,9 +293,9 @@ class AllCNN(ClassifierECG):
         x = self.cnn3(x)
         x = torch.mean(x, dim=-1)
         x = self.fc1(x)
-        x = self.leaky_relu(x)
+        x = self.leaky_relu1(x)
         x = self.fc2(x)
-        x = self.leaky_relu(x)
+        x = self.leaky_relu2(x)
         x = self.out(x)
         return x
 
@@ -308,9 +310,9 @@ class AllCNN(ClassifierECG):
         return x
 
     def representation_to_output(self, x):
-        x = self.leaky_relu(x)
+        x = self.leaky_relu1(x)
         x = self.fc2(x)
-        x = self.leaky_relu(x)
+        x = self.leaky_relu2(x)
         x = self.out(x)
         return x
 

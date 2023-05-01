@@ -224,7 +224,8 @@ class AllCNN(ClassifierFashionMnist):
         self.fc1 = nn.Linear(128, latent_dim)
         self.fc2 = nn.Linear(latent_dim, latent_dim)
         self.out = nn.Linear(latent_dim, 10)
-        self.leaky_relu = nn.LeakyReLU(inplace=True)
+        self.leaky_relu1 = nn.LeakyReLU(inplace=False)
+        self.leaky_relu2 = nn.LeakyReLU(inplace=False)
 
     def forward(self, x):
         x = self.cnn1(x)
@@ -234,9 +235,9 @@ class AllCNN(ClassifierFashionMnist):
         x = self.cnn3(x)
         x = torch.mean(x, dim=(-2, -1))
         x = self.fc1(x)
-        x = self.leaky_relu(x)
+        x = self.leaky_relu1(x)
         x = self.fc2(x)
-        x = self.leaky_relu(x)
+        x = self.leaky_relu2(x)
         x = self.out(x)
         return x
 
@@ -251,9 +252,9 @@ class AllCNN(ClassifierFashionMnist):
         return x
 
     def representation_to_output(self, x):
-        x = self.leaky_relu(x)
+        x = self.leaky_relu1(x)
         x = self.fc2(x)
-        x = self.leaky_relu(x)
+        x = self.leaky_relu2(x)
         x = self.out(x)
         return x
 
@@ -276,7 +277,8 @@ class StandardCNN(ClassifierFashionMnist):
         self.fc1 = nn.Linear(294912, latent_dim)
         self.fc2 = nn.Linear(latent_dim, latent_dim)
         self.out = nn.Linear(latent_dim, 10)
-        self.leaky_relu = nn.LeakyReLU(inplace=True)
+        self.leaky_relu1 = nn.LeakyReLU(inplace=False)
+        self.leaky_relu2 = nn.LeakyReLU(inplace=False)
 
     def forward(self, x):
         x = self.cnn1(x)
@@ -286,9 +288,9 @@ class StandardCNN(ClassifierFashionMnist):
         x = self.cnn3(x)
         x = torch.flatten(x, start_dim=1)
         x = self.fc1(x)
-        x = self.leaky_relu(x)
+        x = self.leaky_relu1(x)
         x = self.fc2(x)
-        x = self.leaky_relu(x)
+        x = self.leaky_relu2(x)
         x = self.out(x)
         return x
 
@@ -303,9 +305,9 @@ class StandardCNN(ClassifierFashionMnist):
         return x
 
     def representation_to_output(self, x):
-        x = self.leaky_relu(x)
+        x = self.leaky_relu1(x)
         x = self.fc2(x)
-        x = self.leaky_relu(x)
+        x = self.leaky_relu2(x)
         x = self.out(x)
         return x
 

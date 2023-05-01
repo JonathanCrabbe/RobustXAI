@@ -40,6 +40,7 @@ from captum.attr import (
     FeaturePermutation,
     FeatureAblation,
     Occlusion,
+    DeepLift
 )
 
 
@@ -109,6 +110,7 @@ def feature_importance(
         "Augmented-CNN": StandardCNN(latent_dim, f"{model_name}_augmented"),
     }
     attr_methods = {
+        "DeepLift": DeepLift,
         "Integrated Gradients": IntegratedGradients,
         "Gradient Shap": GradientShap,
         "Feature Permutation": FeaturePermutation,
