@@ -72,6 +72,7 @@ def global_robustness_plots(experiment_name: str) -> None:
         (global_df["Model Type"] == "All-CNN")
         | (global_df["Model Type"] == "GNN")
         | (global_df["Model Type"] == "Deep-Set")
+        | (global_df["Model Type"] == "D8-Wide-ResNet")
     ]
     y = (
         "Explanation Equivariance"

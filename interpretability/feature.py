@@ -6,8 +6,6 @@ from captum.attr import (
     IntegratedGradients,
     Saliency,
     Occlusion,
-    FeatureAblation,
-    FeaturePermutation,
 )
 from torch_geometric.data import Data as GraphData
 
