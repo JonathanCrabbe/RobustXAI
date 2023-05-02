@@ -9,7 +9,7 @@ import h5py
 import pytorch_lightning as pl
 from torchvision.transforms import transforms
 from pathlib import Path
-from torch.utils.data import Dataset, SubsetRandomSampler, random_split
+from torch.utils.data import Dataset, SubsetRandomSampler
 from torchvision.datasets import FashionMNIST, CIFAR100
 from imblearn.over_sampling import SMOTE
 from abc import ABC, abstractmethod
