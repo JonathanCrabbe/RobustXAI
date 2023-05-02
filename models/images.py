@@ -1,4 +1,3 @@
-from pytorch_lightning.utilities.types import STEP_OUTPUT
 import torch
 import torch.nn as nn
 import logging
@@ -12,12 +11,11 @@ from tqdm import tqdm
 from utils.metrics import AverageMeter
 from random import randint
 from abc import ABC, abstractmethod
-from typing import Any, Tuple
+from typing import Tuple
 from utils.gcnn import (
     conv1x1,
     conv3x3,
     conv5x5,
-    CHANNELS_CONSTANT,
     FIBERS,
     init,
 )

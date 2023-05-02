@@ -652,10 +652,11 @@ class FashionMnistDataset(ConceptDataset, FashionMNIST):
 
 
 class Cifar100Dataset(pl.LightningDataModule):
-    def __init__(self, data_dir: Path, batch_size: int = 32):
+    def __init__(self, data_dir: Path, batch_size: int = 32, num_predict: int = 500):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size = batch_size
+        self.num_predict = num_predict
 
     def setup(self, stage: str):
         normalize = transforms.Normalize(
@@ -692,6 +693,9 @@ class Cifar100Dataset(pl.LightningDataModule):
         train_idx, valid_idx = indices[split:], indices[:split]
         self.train_sampler = SubsetRandomSampler(train_idx)
         self.valid_sampler = SubsetRandomSampler(valid_idx)
+        num_test = len(self.cifar100_test)
+        predict_idx = torch.randperm(num_test)[: self.num_predict]
+        self.predict_sampler = SubsetRandomSampler(predict_idx)
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(
@@ -712,7 +716,7 @@ class Cifar100Dataset(pl.LightningDataModule):
 
     def predict_dataloader(self):
         return torch.utils.data.DataLoader(
-            self.cifar100_test, batch_size=self.batch_size
+            self.cifar100_test, batch_size=self.batch_size, sampler=self.predict_sampler
         )
 
     def teardown(self, stage: str):
