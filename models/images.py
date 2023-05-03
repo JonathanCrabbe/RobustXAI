@@ -715,6 +715,6 @@ class Wide_ResNet(pl.LightningModule):
             "interval": "epoch",
             "frequency": 60,
             "strict": True,
-            "name": None,
+            "name": "exp_lr_scheduler",
         }
-        return {"optimizer": optimizer, "lr_scheduler_config": lr_scheduler_config}
+        return {"optimizer": optimizer, "lr_scheduler": lr_scheduler_config}
