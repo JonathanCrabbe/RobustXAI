@@ -418,7 +418,7 @@ class Wide_ResNet(pl.LightningModule):
     def __init__(
         self,
         depth: int = 28,
-        widen_factor: int = 7,
+        widen_factor: int = 10,
         dropout_rate: float = 0.3,
         num_classes=100,
         N: int = 8,
@@ -431,13 +431,14 @@ class Wide_ResNet(pl.LightningModule):
         deltaorth: bool = False,
         fixparams: bool = True,
         initial_stride: int = 1,
-        conv2triv: bool = True,
+        conv2triv: bool = False,
     ):
         super(Wide_ResNet, self).__init__()
 
         assert (depth - 4) % 6 == 0, "Wide-resnet depth should be 6n+4"
         n = int((depth - 4) / 6)
         k = widen_factor
+        self.depth = depth
 
         nStages = [16, 16 * k, 32 * k, 64 * k]
 
@@ -702,8 +703,8 @@ class Wide_ResNet(pl.LightningModule):
         yhat = self.forward(x)
         loss = F.cross_entropy(yhat, y)
         acc = torch.sum(y == torch.argmax(yhat, dim=-1)) / len(y)
-        self.log("test/loss", loss, on_epoch=True, prog_bar=True)
-        self.log("test/acc", acc, on_epoch=True, prog_bar=True)
+        self.log("test_loss", loss, on_epoch=True, prog_bar=True)
+        self.log("test_acc", acc, on_epoch=True, prog_bar=True)
 
     def configure_optimizers(self):
         optimizer = torch.optim.SGD(
@@ -713,7 +714,7 @@ class Wide_ResNet(pl.LightningModule):
         lr_scheduler_config = {
             "scheduler": lr_scheduler,
             "interval": "epoch",
-            "frequency": 60,
+            "frequency": 60 if self.depth == 28 else 300,
             "strict": True,
             "name": "exp_lr_scheduler",
         }

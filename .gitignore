@@ -164,4 +164,5 @@ datasets/mut/
 datasets/mnet/
 datasets/fashion_mnist/
 datasets/cifar100/
+datasets/stl10/
 results/

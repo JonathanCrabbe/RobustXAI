@@ -6,7 +6,7 @@ import os
 import pandas as pd
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from models.images import Wide_ResNet
-from datasets.loaders import Cifar100Dataset
+from datasets.loaders import STL10Dataset
 from pathlib import Path
 from utils.misc import set_random_seed
 from utils.symmetries import Dihedral
@@ -26,12 +26,12 @@ from utils.plots import single_robustness_plots
 from utils.misc import get_best_checkpoint
 
 
-def train_cifar100_model(
+def train_stl10_model(
     random_seed: int,
     batch_size: int,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/cifar100/",
-    data_dir: Path = Path.cwd() / "datasets/cifar100",
+    model_dir: Path = Path.cwd() / f"results/stl10/",
+    data_dir: Path = Path.cwd() / "datasets/stl10",
     use_wandb: bool = False,
     max_epochs: int = 200,
 ) -> None:
@@ -39,8 +39,8 @@ def train_cifar100_model(
     model_dir = model_dir / model_name
     if not model_dir.exists():
         os.makedirs(model_dir)
-    model = Wide_ResNet()
-    datamodule = Cifar100Dataset(data_dir=data_dir, batch_size=batch_size)
+    model = Wide_ResNet(16, 8, initial_stride=2)
+    datamodule = STL10Dataset(data_dir=data_dir, batch_size=batch_size)
     logger = (
         pl.loggers.WandbLogger(project="RobustXAI", name=model_name, save_dir=model_dir)
         if use_wandb
@@ -50,11 +50,11 @@ def train_cifar100_model(
         ModelCheckpoint(
             dirpath=model_dir,
             monitor="val_acc",
-            every_n_epochs=10,
+            every_n_epochs=50,
             save_top_k=-1,
             filename=model_name + "-{epoch:02d}-{val_acc:.2f}",
         ),
-        EarlyStopping(monitor="val_acc", patience=10, mode="max"),
+        EarlyStopping(monitor="val_acc", patience=20, mode="max"),
     ]
     trainer = pl.Trainer(
         logger=logger,
@@ -70,22 +70,22 @@ def feature_importance(
     random_seed: int,
     batch_size: int,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/cifar100/",
-    data_dir: Path = Path.cwd() / "datasets/cifar100",
+    model_dir: Path = Path.cwd() / f"results/stl10/",
+    data_dir: Path = Path.cwd() / "datasets/stl10",
     plot: bool = True,
     n_test: int = 500,
 ) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     set_random_seed(random_seed)
     model_dir = model_dir / model_name
-    datamodule = Cifar100Dataset(
+    datamodule = STL10Dataset(
         data_dir=data_dir, batch_size=batch_size, num_predict=n_test
     )
     datamodule.setup("predict")
     test_loader = datamodule.predict_dataloader()
     dihedral_group = Dihedral(4)
     ckpt = torch.load(get_best_checkpoint(model_dir))
-    model = Wide_ResNet()
+    model = Wide_ResNet(16, 8, initial_stride=2)
     model_type = "D8-Wide-ResNet"
     model.load_state_dict(ckpt["state_dict"], strict=False)
     attr_methods = {
@@ -122,7 +122,7 @@ def feature_importance(
     metrics_df = pd.DataFrame(metrics)
     metrics_df.to_csv(save_dir / "metrics.csv", index=False)
     if plot:
-        single_robustness_plots(save_dir, "cifar100", "feature_importance")
+        single_robustness_plots(save_dir, "stl10", "feature_importance")
 
 
 if __name__ == "__main__":
@@ -139,9 +139,9 @@ if __name__ == "__main__":
     parser.add_argument("--n_test", type=int, default=500)
     parser.add_argument("--max_epochs", type=int, default=200)
     args = parser.parse_args()
-    model_name = f"cifar100_d8_wideresnet_seed{args.seed}"
+    model_name = f"stl10_d8_wideresnet_seed{args.seed}"
     if args.train:
-        train_cifar100_model(
+        train_stl10_model(
             random_seed=args.seed,
             batch_size=args.batch_size,
             use_wandb=args.use_wandb,
