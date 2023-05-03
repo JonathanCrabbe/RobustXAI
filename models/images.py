@@ -687,9 +687,6 @@ class Wide_ResNet(pl.LightningModule):
             on_epoch=True,
             on_step=False,
         )
-        # Learning rate scheduling
-        if self.trainer.is_last_batch and (self.trainer.current_epoch + 1) % 60 == 0:
-            self.lr_schedulers().step()
         return {"loss": loss, "acc": acc}
 
     def validation_step(self, batch, batch_idx):
@@ -712,5 +709,12 @@ class Wide_ResNet(pl.LightningModule):
         optimizer = torch.optim.SGD(
             self.parameters(), lr=0.1, momentum=0.9, weight_decay=5e-4
         )
-        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.2)
-        return {"optimizer": optimizer, "lr_scheduler": scheduler}
+        lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.2)
+        lr_scheduler_config = {
+            "scheduler": lr_scheduler,
+            "interval": "epoch",
+            "frequency": 60,
+            "strict": True,
+            "name": None,
+        }
+        return {"optimizer": optimizer, "lr_scheduler_config": lr_scheduler_config}

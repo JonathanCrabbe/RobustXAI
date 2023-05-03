@@ -129,7 +129,7 @@ if __name__ == "__main__":
     )
     parser = argparse.ArgumentParser()
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--batch_size", type=int, default=32)
+    parser.add_argument("--batch_size", type=int, default=50)
     parser.add_argument("--use_wandb", action="store_true")
     parser.add_argument("--train", action="store_true")
     parser.add_argument("--plot", action="store_true")
