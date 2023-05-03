@@ -3,6 +3,7 @@ import random
 import numpy as np
 import os
 import glob
+import logging
 from networkx import Graph
 from torch_geometric.data import Data as GraphData
 from torch_geometric.utils import to_networkx
@@ -65,7 +66,9 @@ def get_best_checkpoint(checkpoint_dir: Path) -> str:
     checkpoint_paths = get_all_cherckpoint_paths(checkpoint_dir)
     accuracies = []
     for checkpoint_path in checkpoint_paths:
-        checkpoint = torch.load(checkpoint_path)
-        accuracies.append(checkpoint["val/acc"])
+        # Find the validation accuracy in the string
+        str_idx = checkpoint_path.find("val_acc=") + 8
+        accuracies.append(float(checkpoint_path[str_idx : str_idx + 4]))
     best_checkpoint_idx = np.argmax(accuracies)
+    logging.info(f"Loading best checkpoint: {checkpoint_paths[best_checkpoint_idx]}")
     return checkpoint_paths[best_checkpoint_idx]

@@ -47,12 +47,12 @@ def train_cifar100_model(
     callbacks = [
         ModelCheckpoint(
             dirpath=model_dir,
-            monitor="val/acc",
+            monitor="val_acc",
             every_n_epochs=10,
             save_top_k=-1,
-            filename=model_name + "-{epoch:02d}-{val/acc:.2f}",
+            filename=model_name + "-{epoch:02d}-{val_acc:.2f}",
         ),
-        EarlyStopping(monitor="val/acc", patience=10, mode="max"),
+        EarlyStopping(monitor="val_acc", patience=10, mode="max"),
     ]
     trainer = pl.Trainer(
         logger=logger,
