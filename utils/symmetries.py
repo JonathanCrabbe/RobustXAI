@@ -4,6 +4,7 @@ import torch.nn as nn
 from abc import ABC, abstractmethod
 from e2cnn import gspaces
 from e2cnn import nn as e2nn
+from torchvision.transforms.functional import rotate
 
 
 class Symmetry(nn.Module, ABC):
@@ -145,7 +146,7 @@ class Translation2D(Symmetry):
 
 
 class Dihedral(Symmetry):
-    def __init__(self, order: int = 8, n_chanels: int = 3):
+    def __init__(self, order: int = 4, n_chanels: int = 3):
         super().__init__()
         self.gspace = gspaces.FlipRot2dOnR2(N=order)
         self.n_chanels = n_chanels
@@ -157,6 +158,7 @@ class Dihedral(Symmetry):
     def forward(self, x):
         if self.group_element is None:
             self.sample_symmetry(x)
+        x = x.float()
         x = e2nn.GeometricTensor(x, self.in_type)
         x = x.transform(self.group_element)
         return x.tensor

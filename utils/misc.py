@@ -1,10 +1,13 @@
-import networkx as nx
 import torch
 import random
 import numpy as np
+import os
+import glob
 from networkx import Graph
 from torch_geometric.data import Data as GraphData
 from torch_geometric.utils import to_networkx
+from typing import List
+from pathlib import Path
 
 
 def set_random_seed(seed: int) -> None:
@@ -46,3 +49,23 @@ def to_molecule(data: GraphData) -> Graph:
         data["valence"] = data["edge_attr"].index(1.0) + 1
         del data["edge_attr"]
     return g
+
+
+def get_all_cherckpoint_paths(checkpoint_dir: Path) -> List[str]:
+    """
+    Returns the list of all checkpoints in the given directory
+    """
+    return glob.glob(os.path.join(checkpoint_dir, "*.ckpt"))
+
+
+def get_best_checkpoint(checkpoint_dir: Path) -> str:
+    """
+    Returns the path to the checkpoint with the highest validation accuracy
+    """
+    checkpoint_paths = get_all_cherckpoint_paths(checkpoint_dir)
+    accuracies = []
+    for checkpoint_path in checkpoint_paths:
+        checkpoint = torch.load(checkpoint_path)
+        accuracies.append(checkpoint["val/acc"])
+    best_checkpoint_idx = np.argmax(accuracies)
+    return checkpoint_paths[best_checkpoint_idx]

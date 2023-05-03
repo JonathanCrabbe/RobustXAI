@@ -421,7 +421,7 @@ class Wide_ResNet(pl.LightningModule):
         widen_factor: int = 7,
         dropout_rate: float = 0.3,
         num_classes=100,
-        N: int = 8,
+        N: int = 4,
         r: int = 1,
         f: bool = True,
         main_fiber: str = "regular",
@@ -681,9 +681,14 @@ class Wide_ResNet(pl.LightningModule):
         acc = torch.sum(y == torch.argmax(yhat, dim=-1)) / len(y)
         self.log("train/loss", loss, on_step=True, on_epoch=True, prog_bar=True)
         self.log("train/acc", acc, on_step=True, on_epoch=True, prog_bar=True)
+        self.log(
+            "train/lr",
+            self.lr_schedulers().get_last_lr()[0],
+            on_epoch=True,
+            on_step=False,
+        )
         # Learning rate scheduling
         if self.trainer.is_last_batch and (self.trainer.current_epoch + 1) % 60 == 0:
-            self.log("train/lr", self.lr_schedulers().get_last_lr(), on_step=True)
             self.lr_schedulers().step()
         return {"loss": loss, "acc": acc}
 
