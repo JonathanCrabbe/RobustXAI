@@ -431,7 +431,7 @@ class Wide_ResNet(pl.LightningModule):
         deltaorth: bool = False,
         fixparams: bool = True,
         initial_stride: int = 1,
-        conv2triv: bool = False,
+        conv2triv: bool = True,
     ):
         super(Wide_ResNet, self).__init__()
 

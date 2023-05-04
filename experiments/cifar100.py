@@ -14,13 +14,13 @@ from captum.attr import (
     DeepLift,
     IntegratedGradients,
     GradientShap,
-    Occlusion,
-    Saliency,
 )
 from interpretability.feature import FeatureImportance
 from interpretability.robustness import (
     model_invariance_exact,
     explanation_equivariance_exact,
+    ComputeModelInvariance,
+    ComputeSaliencyEquivariance,
 )
 from utils.plots import single_robustness_plots
 from utils.misc import get_best_checkpoint
@@ -40,17 +40,29 @@ def train_cifar100_model(
     if not model_dir.exists():
         os.makedirs(model_dir)
     model = Wide_ResNet()
-    datamodule = Cifar100Dataset(data_dir=data_dir, batch_size=batch_size)
+    datamodule = Cifar100Dataset(
+        data_dir=data_dir, batch_size=batch_size, num_predict=50
+    )
     logger = (
         pl.loggers.WandbLogger(project="RobustXAI", name=model_name, save_dir=model_dir)
         if use_wandb
         else None
     )
     callbacks = [
+        ComputeModelInvariance(symmetry=Dihedral(), datamodule=datamodule),
+        ComputeSaliencyEquivariance(symmetry=Dihedral(), datamodule=datamodule),
         ModelCheckpoint(
             dirpath=model_dir,
             monitor="val_acc",
-            every_n_epochs=10,
+            every_n_epochs=1,
+            save_top_k=1,
+            mode="max",
+            filename=model_name + "-{epoch:02d}-{val_acc:.2f}",
+        ),
+        ModelCheckpoint(
+            dirpath=model_dir,
+            monitor="val_acc",
+            every_n_epochs=20,
             save_top_k=-1,
             filename=model_name + "-{epoch:02d}-{val_acc:.2f}",
         ),
@@ -83,17 +95,15 @@ def feature_importance(
     )
     datamodule.setup("predict")
     test_loader = datamodule.predict_dataloader()
-    dihedral_group = Dihedral(4)
+    dihedral_group = Dihedral()
     ckpt = torch.load(get_best_checkpoint(model_dir))
     model = Wide_ResNet()
     model_type = "D8-Wide-ResNet"
     model.load_state_dict(ckpt["state_dict"], strict=False)
     attr_methods = {
-        "Saliency": Saliency,
         "DeepLift": DeepLift,
         "Integrated Gradients": IntegratedGradients,
         "Gradient Shap": GradientShap,
-        "Feature Occlusion": Occlusion,
     }
     save_dir = model_dir / "feature_importance"
     if not save_dir.exists():

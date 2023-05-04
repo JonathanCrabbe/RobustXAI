@@ -39,7 +39,7 @@ def train_stl10_model(
     model_dir = model_dir / model_name
     if not model_dir.exists():
         os.makedirs(model_dir)
-    model = Wide_ResNet(16, 8, initial_stride=2, num_classes=10)
+    model = Wide_ResNet(16, 8, initial_stride=2, num_classes=10, conv2triv=False)
     datamodule = STL10Dataset(data_dir=data_dir, batch_size=batch_size, num_predict=50)
     logger = (
         pl.loggers.WandbLogger(project="RobustXAI", name=model_name, save_dir=model_dir)
@@ -95,7 +95,7 @@ def feature_importance(
     test_loader = datamodule.predict_dataloader()
     dihedral_group = Dihedral()
     ckpt = torch.load(get_best_checkpoint(model_dir))
-    model = Wide_ResNet(16, 8, initial_stride=2, num_classes=10)
+    model = Wide_ResNet(16, 8, initial_stride=2, num_classes=10, conv2triv=False)
     model_type = "D8-Wide-ResNet"
     model.load_state_dict(ckpt["state_dict"], strict=False)
     attr_methods = {
