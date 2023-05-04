@@ -173,7 +173,7 @@ def example_importance(
     train_loader_replacement = DataLoader(train_set, batch_size, sampler=train_sampler)
     test_loader = datamodule.predict_dataloader()
     checkpoint = torch.load(get_best_checkpoint(model_dir))
-    model = Wide_ResNet()
+    model = Wide_ResNet(16, 8, initial_stride=2, num_classes=10)
     model.load_state_dict(checkpoint["state_dict"], strict=False)
     model_type = "D8-Wide-ResNet"
     attr_methods = {
