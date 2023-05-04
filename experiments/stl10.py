@@ -14,13 +14,13 @@ from captum.attr import (
     DeepLift,
     IntegratedGradients,
     GradientShap,
-    Occlusion,
-    Saliency,
 )
 from interpretability.feature import FeatureImportance
 from interpretability.robustness import (
     model_invariance_exact,
     explanation_equivariance_exact,
+    ComputeModelInvariance,
+    ComputeSaliencyEquivariance,
 )
 from utils.plots import single_robustness_plots
 from utils.misc import get_best_checkpoint
@@ -39,14 +39,24 @@ def train_stl10_model(
     model_dir = model_dir / model_name
     if not model_dir.exists():
         os.makedirs(model_dir)
-    model = Wide_ResNet(16, 8, initial_stride=2)
-    datamodule = STL10Dataset(data_dir=data_dir, batch_size=batch_size)
+    model = Wide_ResNet(16, 8, initial_stride=2, num_classes=10)
+    datamodule = STL10Dataset(data_dir=data_dir, batch_size=batch_size, num_predict=50)
     logger = (
         pl.loggers.WandbLogger(project="RobustXAI", name=model_name, save_dir=model_dir)
         if use_wandb
         else None
     )
     callbacks = [
+        ComputeModelInvariance(symmetry=Dihedral(), datamodule=datamodule),
+        ComputeSaliencyEquivariance(symmetry=Dihedral(), datamodule=datamodule),
+        ModelCheckpoint(
+            dirpath=model_dir,
+            monitor="val_acc",
+            every_n_epochs=1,
+            save_top_k=1,
+            mode="max",
+            filename=model_name + "-{epoch:02d}-{val_acc:.2f}",
+        ),
         ModelCheckpoint(
             dirpath=model_dir,
             monitor="val_acc",
@@ -83,17 +93,15 @@ def feature_importance(
     )
     datamodule.setup("predict")
     test_loader = datamodule.predict_dataloader()
-    dihedral_group = Dihedral(4)
+    dihedral_group = Dihedral()
     ckpt = torch.load(get_best_checkpoint(model_dir))
-    model = Wide_ResNet(16, 8, initial_stride=2)
+    model = Wide_ResNet(16, 8, initial_stride=2, num_classes=10)
     model_type = "D8-Wide-ResNet"
     model.load_state_dict(ckpt["state_dict"], strict=False)
     attr_methods = {
-        "Saliency": Saliency,
         "DeepLift": DeepLift,
         "Integrated Gradients": IntegratedGradients,
         "Gradient Shap": GradientShap,
-        "Feature Occlusion": Occlusion,
     }
     save_dir = model_dir / "feature_importance"
     if not save_dir.exists():
@@ -137,7 +145,7 @@ if __name__ == "__main__":
     parser.add_argument("--plot", action="store_true")
     parser.add_argument("--name", type=str, default="feature importance")
     parser.add_argument("--n_test", type=int, default=500)
-    parser.add_argument("--max_epochs", type=int, default=200)
+    parser.add_argument("--max_epochs", type=int, default=1000)
     args = parser.parse_args()
     model_name = f"stl10_d8_wideresnet_seed{args.seed}"
     if args.train:
