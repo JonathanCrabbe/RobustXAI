@@ -1,5 +1,4 @@
 import abc
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -12,6 +11,7 @@ from datasets.loaders import ConceptDataset
 from torch_geometric.data import Data as GraphData
 from torch_geometric.loader import DataLoader as GraphDataLoader
 from sklearn.metrics import accuracy_score
+from e2cnn.nn import GeometricTensor
 
 
 class ConceptExplainer(ABC, nn.Module):
@@ -30,6 +30,9 @@ class ConceptExplainer(ABC, nn.Module):
         self.H = None
 
         def hook(module, input, output):
+            # Handle conversion to tensor in case of GeometricTensor
+            if isinstance(output, GeometricTensor):
+                output = output.tensor
             self.H = output.flatten(start_dim=1).detach().cpu().numpy()
 
         self.handle = layer.register_forward_hook(hook)

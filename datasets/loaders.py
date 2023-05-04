@@ -651,7 +651,7 @@ class FashionMnistDataset(ConceptDataset, FashionMNIST):
         return X[rand_perm], C[rand_perm]
 
 
-class Cifar100Dataset(pl.LightningDataModule):
+class Cifar100Dataset(pl.LightningDataModule, ConceptDataset):
     def __init__(self, data_dir: Path, batch_size: int = 32, num_predict: int = 500):
         super().__init__()
         self.data_dir = data_dir
@@ -721,6 +721,14 @@ class Cifar100Dataset(pl.LightningDataModule):
 
     def teardown(self, stage: str):
         ...
+
+    @property
+    def concept_names(self):
+        return ["Aquatic", "People", "Vehicles", "Food"]
+
+    def generate_concept_dataset(self, concept_id: int, concept_set_size: int) -> tuple:
+        classes = self.cifar100_train.classes
+        concept_to_classes = {"Aquatic": {""}}
 
 
 class STL10Dataset(pl.LightningDataModule):
