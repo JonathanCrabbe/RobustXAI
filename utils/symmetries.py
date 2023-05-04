@@ -146,7 +146,7 @@ class Translation2D(Symmetry):
 
 
 class Dihedral(Symmetry):
-    def __init__(self, order: int = 8, n_chanels: int = 3):
+    def __init__(self, order: int = 4, n_chanels: int = 3):
         super().__init__()
         self.gspace = gspaces.FlipRot2dOnR2(N=order)
         self.n_chanels = n_chanels
