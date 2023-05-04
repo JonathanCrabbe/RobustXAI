@@ -1,12 +1,14 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import pytorch_lightning as pl
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 from utils.symmetries import Symmetry
 from random import shuffle
 from captum.metrics import sensitivity_max
-from captum.attr import Attribution, GradientShap, Occlusion
+from captum.attr import Attribution, GradientShap, Occlusion, Saliency
+from interpretability.feature import FeatureImportance
 
 
 def l1_distance(
@@ -314,3 +316,40 @@ class InvariantExplainer(nn.Module):
         if self.round:
             explanation = torch.round(explanation)
         return explanation
+
+
+class ComputeModelInvariance(pl.Callback):
+    def __init__(self, symmetry: Symmetry, datamodule: pl.LightningDataModule) -> None:
+        super().__init__()
+        self.symmetry = symmetry
+        self.datamodule = datamodule
+
+    def on_validation_epoch_start(self, trainer, pl_module):
+        invariance_score = torch.mean(
+            model_invariance_exact(
+                pl_module,
+                self.symmetry,
+                self.datamodule.predict_dataloader(),
+                pl_module.device,
+            )
+        )
+        pl_module.log("model_invariance", invariance_score)
+
+
+class ComputeSaliencyEquivariance(pl.Callback):
+    def __init__(self, symmetry: Symmetry, datamodule: pl.LightningDataModule) -> None:
+        super().__init__()
+        self.symmetry = symmetry
+        self.datamodule = datamodule
+
+    def on_validation_epoch_start(self, trainer, pl_module):
+        feature_importance = FeatureImportance(Saliency(pl_module))
+        equivariance_score = torch.mean(
+            explanation_equivariance_exact(
+                feature_importance,
+                self.symmetry,
+                self.datamodule.predict_dataloader(),
+                pl_module.device,
+            )
+        )
+        pl_module.log("gradient_equivariance", equivariance_score)
