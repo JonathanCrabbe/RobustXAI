@@ -722,13 +722,67 @@ class Cifar100Dataset(pl.LightningDataModule, ConceptDataset):
     def teardown(self, stage: str):
         ...
 
-    @property
     def concept_names(self):
-        return ["Aquatic", "People", "Vehicles", "Food"]
+        return ["Aquatic", "People", "Vehicles"]
 
     def generate_concept_dataset(self, concept_id: int, concept_set_size: int) -> tuple:
-        classes = self.cifar100_train.classes
-        concept_to_classes = {"Aquatic": {""}}
+        train_set = self.cifar100_train
+        classes = train_set.classes
+        concept_to_classes = {
+            "Aquatic": {
+                "beaver",
+                "dolphin",
+                "otter",
+                "seal",
+                "whale",
+                "aquarium_fish",
+                "flatfish",
+                "ray",
+                "shark",
+                "trout",
+            },
+            "People": {"baby", "boy", "girl", "man", "woman"},
+            "Vehicles": {
+                "bicycle",
+                "bus",
+                "motorcycle",
+                "pickup_truck",
+                "train",
+                "lawn_mower",
+                "rocket",
+                "streetcar",
+                "tank",
+                "tractor",
+            },
+        }
+        labels = torch.Tensor(self.cifar100_train.targets)
+        mask = []
+        for label in labels:
+            mask.append(
+                classes[int(label)]
+                in concept_to_classes[self.concept_names()[concept_id]]
+            )
+        mask = torch.BoolTensor(mask)
+        positive_idx = torch.nonzero(mask).flatten()
+        negative_idx = torch.nonzero(~mask).flatten()
+        positive_loader = torch.utils.data.DataLoader(
+            train_set,
+            batch_size=concept_set_size,
+            sampler=SubsetRandomSampler(positive_idx),
+        )
+        negative_loader = torch.utils.data.DataLoader(
+            train_set,
+            batch_size=concept_set_size,
+            sampler=SubsetRandomSampler(negative_idx),
+        )
+        X_pos, C_pos = next(iter(positive_loader))
+        X_neg, C_neg = next(iter(negative_loader))
+        X = torch.concatenate((X_pos, X_neg), 0)
+        C = torch.concatenate(
+            (torch.ones(concept_set_size), torch.zeros(concept_set_size)), 0
+        )
+        rand_perm = torch.randperm(len(X))
+        return X[rand_perm], C[rand_perm]
 
 
 class STL10Dataset(pl.LightningDataModule):
