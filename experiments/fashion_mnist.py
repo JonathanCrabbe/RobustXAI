@@ -367,8 +367,8 @@ def concept_importance(
     )
     metrics_df.to_csv(save_dir / "metrics.csv", index=False)
     if plot:
-        single_robustness_plots(save_dir, "ecg", "concept_importance")
-        relaxing_invariance_plots(save_dir, "ecg", "concept_importance")
+        single_robustness_plots(save_dir, "fashion_mnist", "concept_importance")
+        relaxing_invariance_plots(save_dir, "fashion_mnist", "concept_importance")
 
 
 def enforce_invariance(
