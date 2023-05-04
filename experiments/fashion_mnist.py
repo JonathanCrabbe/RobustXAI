@@ -332,7 +332,7 @@ def concept_importance(
                 f"Now working with {attr_name} explainer on layer {layer_name}"
             )
             conc_importance = attr_methods[attr_name](
-                model, train_set, n_classes=2, layer=model_layers[layer_name]
+                model, train_set, n_classes=10, layer=model_layers[layer_name]
             )
             conc_importance.fit(device, concept_set_size)
             concept_acc = conc_importance.concept_accuracy(
@@ -413,7 +413,7 @@ def enforce_invariance(
         for attr_name in attr_methods:
             logging.info(f"Now working with {attr_name} explainer")
             attr_method = attr_methods[attr_name](
-                model, train_set, n_classes=2, layer=model.cnn3
+                model, train_set, n_classes=10, layer=model.cnn3
             )
             if isinstance(attr_method, ConceptExplainer):
                 attr_method.fit(device, concept_set_size)
