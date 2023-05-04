@@ -156,9 +156,21 @@ class TracIn(ExampleBasedExplainer):
         return attribution
 
     def compute_train_grads(self) -> None:
-        for train_idx, (x_train, y_train) in enumerate(self.subtrain_loader):
+        for train_idx, (x_train, y_train) in enumerate(
+            tqdm(
+                self.subtrain_loader,
+                desc="TracIN pre-computing train grads",
+                unit="example",
+                leave=False,
+            )
+        ):
             grad = None
-            for checkpoint in self.checkpoints:
+            for checkpoint in tqdm(
+                self.checkpoints,
+                desc="Checkpoint Progress",
+                leave=False,
+                unit="checkpoint",
+            ):
                 self.model.load_state_dict(
                     self.load_model_dict(checkpoint), strict=False
                 )
@@ -218,7 +230,14 @@ class InfluenceFunctions(ExampleBasedExplainer):
         damp: float = 1e-3,
         scale: float = 1000,
     ) -> None:
-        for train_idx, (x_train, y_train) in enumerate(self.subtrain_loader):
+        for train_idx, (x_train, y_train) in enumerate(
+            tqdm(
+                self.subtrain_loader,
+                unit="example",
+                desc="Influence Function precomputing",
+                leave=False,
+            )
+        ):
             x_train = x_train.to(self.device)
             loss = self.loss_function(self.model(x_train), y_train)
             grad = direct_sum(
@@ -228,7 +247,12 @@ class InfluenceFunctions(ExampleBasedExplainer):
             )
             ihvp = grad.detach().clone()
             train_sampler = iter(self.train_loader)
-            for _ in range(self.recursion_depth):
+            for _ in tqdm(
+                range(self.recursion_depth),
+                desc="Influence Function IHVP",
+                leave=False,
+                unit="recursion",
+            ):
                 X_sample, Y_sample = next(train_sampler)
                 X_sample, Y_sample = X_sample.to(self.device), Y_sample.to(self.device)
                 sampled_loss = self.loss_function(self.model(X_sample), Y_sample)
