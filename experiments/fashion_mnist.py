@@ -399,7 +399,7 @@ def enforce_invariance(
     save_dir = model_dir / "enforce_invariance"
     if not save_dir.exists():
         os.makedirs(save_dir)
-    translation = Translation2D(max_displacement)
+    translation = Translation2D(5)  # Restrict to a subgroup of translation for runtime
     group_size = len(translation.get_all_symmetries(None))
     metrics = []
     for model_type in models:
