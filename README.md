@@ -12,12 +12,16 @@ For more details, please read our [paper](https://arxiv.org/abs/2304.06715): 'Ev
 
 From repository:
 1. Clone the repository.
-2. Install the required packages from the `environment.yml` file with conda.
+2. [Install Fortran](https://fortran-lang.org/en/learn/os_setup/install_gfortran/) on your machines (this is a prerequisite for the `py3nj` package).
+3. Install the required packages from the `environment.yml` file with conda.
 
 ```shell
 conda env create -f environment.yml
 ```
-3. Activate the created environment.
+4. Activate the created environment.
+```shell
+conda activate robustxai
+```
 
 When the packages are installed, you are ready to evaluate interpretability methods!
 
