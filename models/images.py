@@ -719,3 +719,6 @@ class Wide_ResNet(pl.LightningModule):
             "name": "exp_lr_scheduler",
         }
         return {"optimizer": optimizer, "lr_scheduler": lr_scheduler_config}
+
+    def last_layer(self) -> nn.Module or None:
+        return self.linear

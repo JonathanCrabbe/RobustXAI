@@ -8,6 +8,7 @@ from torch_geometric.data import Data as GraphData
 from pathlib import Path
 from utils.misc import direct_sum
 from tqdm import tqdm
+from typing import List, Optional, Any
 
 
 class ExampleBasedExplainer(nn.Module, ABC):
@@ -96,13 +97,18 @@ class TracIn(ExampleBasedExplainer):
         Y_train: torch.Tensor,
         loss_function: callable,
         save_dir: Path,
+        checkpoint_files: Optional[List[Path]] = None,
         **kwargs,
     ):
         super().__init__(model, X_train)
         self.last_layer = model.last_layer()
         self.save_dir = save_dir / "tracin"
         self.loss_function = loss_function
-        self.checkpoints = model.checkpoints_files
+        self.checkpoints = (
+            checkpoint_files
+            if checkpoint_files is not None
+            else model.checkpoints_files
+        )
         self.device = X_train.device
         train_subset = TensorDataset(X_train, Y_train)
         self.subtrain_loader = DataLoader(train_subset, batch_size=1, shuffle=False)
@@ -120,7 +126,9 @@ class TracIn(ExampleBasedExplainer):
             test_grad = None
             x_test, y_test = x_test.to(self.device), y_test.to(self.device)
             for checkpoint in self.checkpoints:
-                self.model.load_state_dict(torch.load(checkpoint), strict=False)
+                self.model.load_state_dict(
+                    self.load_model_dict(checkpoint), strict=False
+                )
                 test_loss = self.loss_function(self.model(x_test), y_test)
                 if test_grad is not None:
                     test_grad += direct_sum(
@@ -144,7 +152,9 @@ class TracIn(ExampleBasedExplainer):
         for train_idx, (x_train, y_train) in enumerate(self.subtrain_loader):
             grad = None
             for checkpoint in self.checkpoints:
-                self.model.load_state_dict(torch.load(checkpoint), strict=False)
+                self.model.load_state_dict(
+                    self.load_model_dict(checkpoint), strict=False
+                )
                 loss = self.loss_function(self.model(x_train), y_train)
                 if grad is not None:
                     grad += direct_sum(
@@ -160,6 +170,14 @@ class TracIn(ExampleBasedExplainer):
                     )
             torch.save(grad.detach().cpu(), self.save_dir / f"train_grad{train_idx}.pt")
         self.train_grads = True
+
+    @staticmethod
+    def load_model_dict(checkpoint_path: Path) -> Any:
+        model_dict = torch.load(checkpoint_path)
+        # If the checkpoint is a pytorch lightning checkpoint we need to extract the model state dict
+        if ".ckpt" in checkpoint_path.name:
+            model_dict = model_dict["state_dict"]
+        return model_dict
 
 
 class InfluenceFunctions(ExampleBasedExplainer):
