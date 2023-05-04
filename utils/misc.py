@@ -1,8 +1,6 @@
 import torch
 import random
 import numpy as np
-import os
-import glob
 import logging
 from networkx import Graph
 from torch_geometric.data import Data as GraphData
@@ -52,23 +50,23 @@ def to_molecule(data: GraphData) -> Graph:
     return g
 
 
-def get_all_cherckpoint_paths(checkpoint_dir: Path) -> List[str]:
+def get_all_checkpoint_paths(checkpoint_dir: Path) -> List[Path]:
     """
     Returns the list of all checkpoints in the given directory
     """
-    return glob.glob(os.path.join(checkpoint_dir, "*.ckpt"))
+    return list(checkpoint_dir.glob("*.ckpt"))
 
 
-def get_best_checkpoint(checkpoint_dir: Path) -> str:
+def get_best_checkpoint(checkpoint_dir: Path) -> Path:
     """
     Returns the path to the checkpoint with the highest validation accuracy
     """
-    checkpoint_paths = get_all_cherckpoint_paths(checkpoint_dir)
+    checkpoint_paths = get_all_checkpoint_paths(checkpoint_dir)
     accuracies = []
     for checkpoint_path in checkpoint_paths:
         # Find the validation accuracy in the string
-        str_idx = checkpoint_path.find("val_acc=") + 8
-        accuracies.append(float(checkpoint_path[str_idx : str_idx + 4]))
+        str_idx = checkpoint_path.name.find("val_acc=") + 8
+        accuracies.append(float(checkpoint_path.name[str_idx : str_idx + 4]))
     best_checkpoint_idx = np.argmax(accuracies)
     logging.info(f"Loading best checkpoint: {checkpoint_paths[best_checkpoint_idx]}")
     return checkpoint_paths[best_checkpoint_idx]

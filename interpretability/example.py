@@ -9,6 +9,7 @@ from pathlib import Path
 from utils.misc import direct_sum
 from tqdm import tqdm
 from typing import List, Optional, Any
+from e2cnn.nn import GeometricTensor
 
 
 class ExampleBasedExplainer(nn.Module, ABC):
@@ -30,6 +31,9 @@ class SimplEx(ExampleBasedExplainer):
         self.H = torch.empty(0)
 
         def hook(module, input, output):
+            # Handle tensor conversion
+            if isinstance(output, GeometricTensor):
+                output = output.tensor
             self.H = output.flatten(start_dim=1).detach()
 
         self.handle = layer.register_forward_hook(hook)
@@ -72,6 +76,9 @@ class RepresentationSimilarity(ExampleBasedExplainer):
         self.H = torch.empty(0)
 
         def hook(module, input, output):
+            # Handle tensor conversion
+            if isinstance(output, GeometricTensor):
+                output = output.tensor
             self.H = output.flatten(start_dim=1).detach()
 
         self.handle = layer.register_forward_hook(hook)

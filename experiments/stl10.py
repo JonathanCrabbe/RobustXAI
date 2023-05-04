@@ -39,7 +39,7 @@ def train_stl10_model(
     model_dir = model_dir / model_name
     if not model_dir.exists():
         os.makedirs(model_dir)
-    model = Wide_ResNet(16, 8, initial_stride=2, num_classes=10, conv2triv=False)
+    model = Wide_ResNet(16, 8, initial_stride=2, num_classes=10)
     datamodule = STL10Dataset(data_dir=data_dir, batch_size=batch_size, num_predict=50)
     logger = (
         pl.loggers.WandbLogger(project="RobustXAI", name=model_name, save_dir=model_dir)
@@ -64,7 +64,7 @@ def train_stl10_model(
             save_top_k=-1,
             filename=model_name + "-{epoch:02d}-{val_acc:.2f}",
         ),
-        EarlyStopping(monitor="val_acc", patience=20, mode="max"),
+        EarlyStopping(monitor="val_acc", patience=100, mode="max"),
     ]
     trainer = pl.Trainer(
         logger=logger,
@@ -95,7 +95,7 @@ def feature_importance(
     test_loader = datamodule.predict_dataloader()
     dihedral_group = Dihedral()
     ckpt = torch.load(get_best_checkpoint(model_dir))
-    model = Wide_ResNet(16, 8, initial_stride=2, num_classes=10, conv2triv=False)
+    model = Wide_ResNet(16, 8, initial_stride=2, num_classes=10)
     model_type = "D8-Wide-ResNet"
     model.load_state_dict(ckpt["state_dict"], strict=False)
     attr_methods = {
@@ -157,7 +157,7 @@ if __name__ == "__main__":
             max_epochs=args.max_epochs,
         )
     match args.name:
-        case "feature importance":
+        case "feature_importance":
             feature_importance(
                 random_seed=args.seed,
                 batch_size=args.batch_size,
