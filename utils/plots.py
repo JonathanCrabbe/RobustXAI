@@ -7,6 +7,8 @@ import textwrap
 import logging
 import argparse
 import networkx as nx
+import numpy as np
+import itertools
 from pathlib import Path
 
 
@@ -36,7 +38,7 @@ def single_robustness_plots(plot_dir: Path, dataset: str, experiment_name: str) 
 
 
 def global_robustness_plots(experiment_name: str) -> None:
-    sns.set(font_scale=1.0)
+    sns.set(font_scale=1.2)
     sns.set_style("whitegrid")
     sns.set_palette("colorblind")
     with open(Path.cwd() / "results_dir.json") as f:
@@ -66,6 +68,14 @@ def global_robustness_plots(experiment_name: str) -> None:
         "CAR-Rho": "CAR-Inv",
         "CAV-Phi": "CAV-Equiv",
         "CAV-Rho": "CAV-Inv",
+        "CAR-Conv1": "CAR-Equiv",
+        "CAV-Conv1": "CAV-Equiv",
+        "SimplEx-Conv1": "SimplEx-Equiv",
+        "Representation Similarity-Conv1": "Rep. Similar-Equiv",
+        "CAR-Layer3": "CAR-Inv",
+        "CAV-Layer3": "CAV-Inv",
+        "Simplex-Layer3": "SimplEx-Inv",
+        "Representation Similarity-Layer3": "Rep. Similar-Inv",
     }
     global_df = global_df.replace(rename_dic)
     global_df = global_df[
@@ -299,6 +309,128 @@ def wrap_labels(ax, width, break_long_words=False, do_y: bool = False) -> None:
         ax.set_yticklabels(labels, rotation=0)
 
 
+def global_relax_invariance() -> None:
+    sns.set(font_scale=1.2)
+    sns.set_style("whitegrid")
+    with open(Path.cwd() / "results_dir.json") as f:
+        path_dic = json.load(f)
+    global_df = []
+    for dataset, experiment_name in itertools.product(
+        ["ECG", "Fa.MNIST"],
+        ["feature_importance", "example_importance", "concept_importance"],
+    ):
+        dataset_df = pd.read_csv(
+            Path.cwd() / path_dic[dataset] / experiment_name / "metrics.csv"
+        )
+        dataset_df["Dataset"] = [dataset] * len(dataset_df)
+        dataset_df["Experiment"] = [experiment_name] * len(dataset_df)
+        dataset_df = dataset_df.drop(
+            dataset_df[
+                (dataset_df.Explanation == "SimplEx-Conv3")
+                | (dataset_df.Explanation == "Representation Similarity-Conv3")
+                | (dataset_df.Explanation == "CAR-Conv3")
+                | (dataset_df.Explanation == "CAV-Conv3")
+            ].index
+        )
+        rename_dic = {"Representation Similarity-Lin1": "Rep. Similar-Lin1"}
+        dataset_df = dataset_df.replace(rename_dic)
+        global_df.append(dataset_df)
+    global_df = pd.concat(global_df)
+
+    n_datasets = len(global_df["Dataset"].unique())
+
+    # Create a grid of plots
+    fig, axs = plt.subplots(nrows=n_datasets, ncols=3, figsize=(17, 12), sharex=True)
+
+    datasets = global_df["Dataset"].unique()
+    models = global_df["Model Type"].unique()
+    experiments = global_df["Experiment"].unique()
+    explanations_legends = {}
+
+    # Loop over the subplots and plot the data
+    for i, dataset in enumerate(datasets):  # rows
+        for j, experiment in enumerate(experiments):  # columns
+            ax = axs[i, j]
+            metrics_df = global_df[
+                (global_df["Dataset"] == dataset)
+                & (global_df["Experiment"] == experiment)
+            ]
+            y = (
+                "Explanation Equivariance"
+                if "feature" in experiment
+                else "Explanation Invariance"
+            )
+            plot_df = metrics_df.groupby(["Model Type", "Explanation"]).mean(
+                numeric_only=True
+            )
+            plot_df[["Model Invariance CI", f"{y} CI"]] = 2 * metrics_df.groupby(
+                ["Model Type", "Explanation"]
+            )[["Model Invariance", y]].apply("sem")
+            sns.scatterplot(
+                ax=ax,
+                data=plot_df,
+                x="Model Invariance",
+                y=y,
+                hue="Model Type",
+                edgecolor="black",
+                alpha=0.5,
+                style="Explanation",
+                markers=markers[: metrics_df["Explanation"].nunique()],
+                s=200,
+            )
+            ax.errorbar(
+                x=plot_df["Model Invariance"],
+                y=plot_df[y],
+                xerr=plot_df["Model Invariance CI"],
+                yerr=plot_df[f"{y} CI"],
+                ecolor="black",
+                elinewidth=1.7,
+                linestyle="",
+                capsize=1.7,
+                capthick=1.7,
+            )
+            ax.set_xscale("linear")
+            ax.axline((0, 0), slope=1, color="gray", linestyle="dotted")
+            ax.set_xlim(0, 1.1)
+            ax.set_ylim(0, 1.1)
+            # Get handles and labels for hue and style legends
+            handles, labels = ax.get_legend_handles_labels()
+            explanation_cut = labels.index("Explanation")
+            hue_handles = handles[:explanation_cut]  # first half of handles are for hue
+            hue_labels = labels[:explanation_cut]
+            style_handles = handles[
+                explanation_cut + 1 :
+            ]  # second half of handles are for style
+            style_labels = labels[explanation_cut + 1 :]
+
+            # Create separate legends for hue and style
+            if i == len(datasets) - 1:
+                ax.legend(
+                    style_handles,
+                    style_labels,
+                    loc="center",
+                    bbox_to_anchor=(0.5, -0.4),
+                    title="Explanation",
+                    frameon=False,
+                )
+            else:
+                ax.legend().remove()
+            if j == 1:
+                ax.set_title(dataset)
+    fig.legend(
+        hue_handles,
+        hue_labels,
+        loc="lower center",
+        ncol=4,
+        bbox_to_anchor=(0.5, 0),
+        frameon=False,
+    )
+    fig.tight_layout()
+
+    plt.savefig(Path.cwd() / f"results/global_relax_invariance.pdf")
+    plt.close()
+
+
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -313,13 +445,17 @@ if __name__ == "__main__":
     with open(Path.cwd() / "results_dir.json") as f:
         path_dic = json.load(f)
     dataset_full_names = {
-        "ecg": "Electrocardiograms",
-        "mut": "Mutagenicity",
-        "mnet": "ModelNet40",
+        "ecg": "ECG",
+        "mut": "Muta.",
+        "mnet": "M.Net40",
+        "fashion_mnist": "Fa.MNIST",
     }
     plot_path = (
-        Path.cwd() / path_dic[dataset_full_names[args.dataset]] / args.experiment_name
+        (Path.cwd() / path_dic[dataset_full_names[args.dataset]] / args.experiment_name)
+        if "global" not in args.plot_name
+        else Path.cwd() / "results"
     )
+
     logging.info(f"Saving {args.plot_name} plot for {args.dataset} in {str(plot_path)}")
     match args.plot_name:
         case "robustness":
@@ -334,5 +470,7 @@ if __name__ == "__main__":
             enforce_invariance_plot(plot_path, args.dataset)
         case "sensitivity_comparison":
             sensitivity_plot(plot_path, args.dataset)
+        case "global_relax_invariance":
+            global_relax_invariance()
         case other:
             raise ValueError("Unknown plot name")
