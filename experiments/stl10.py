@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import logging
 import os
+import itertools
 import warnings
 import pandas as pd
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
@@ -24,12 +25,14 @@ from interpretability.example import (
     SimplEx,
     RepresentationSimilarity,
 )
+from interpretability.concept import CAV, CAR
 from interpretability.robustness import (
     model_invariance_exact,
     explanation_equivariance_exact,
     explanation_invariance_exact,
     ComputeModelInvariance,
     ComputeSaliencyEquivariance,
+    accuracy,
 )
 from utils.plots import single_robustness_plots
 from utils.misc import get_best_checkpoint, get_all_checkpoint_paths
@@ -244,6 +247,80 @@ def example_importance(
         single_robustness_plots(save_dir, "stl10", "example_importance")
 
 
+def concept_importance(
+    random_seed: int,
+    batch_size: int,
+    plot: bool,
+    model_name: str = "model",
+    model_dir: Path = Path.cwd() / f"results/stl10/",
+    data_dir: Path = Path.cwd() / "datasets/stl10",
+    n_test: int = 500,
+    concept_set_size: int = 100,
+) -> None:
+    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    set_random_seed(random_seed)
+    datamodule = STL10Dataset(
+        data_dir=data_dir, batch_size=batch_size, num_predict=n_test
+    )
+    datamodule.setup("predict")
+    test_loader = datamodule.predict_dataloader()
+    attr_methods = {"CAR": CAR, "CAV": CAV}
+    model_dir = model_dir / model_name
+    save_dir = model_dir / "concept_importance"
+    if not save_dir.exists():
+        os.makedirs(save_dir)
+    dihedral_group = Dihedral()
+    model = Wide_ResNet(16, 8, initial_stride=2, num_classes=10)
+    checkpoint = torch.load(get_best_checkpoint(model_dir))
+    model.load_state_dict(checkpoint["state_dict"], strict=False)
+    model_type = "D8-Wide-ResNet"
+    metrics = []
+    logging.info(f"Now working with {model_type} classifier")
+    model.to(device).eval()
+    model_inv = model_invariance_exact(model, dihedral_group, test_loader, device)
+    logging.info(f"Model invariance: {torch.mean(model_inv):.3g}")
+    model_layers = {"Conv1": model.conv1, "Layer3": model.relu}
+    for layer_name, attr_name in itertools.product(model_layers, attr_methods):
+        logging.info(f"Now working with {attr_name} explainer on layer {layer_name}")
+        conc_importance = attr_methods[attr_name](
+            model,
+            datamodule,
+            n_classes=10,
+            layer=model_layers[layer_name],
+            batch_size=batch_size,
+        )
+        conc_importance.fit(device, concept_set_size)
+        concept_acc = conc_importance.concept_accuracy(
+            datamodule, device, concept_set_size=concept_set_size
+        )
+        for concept_name in concept_acc:
+            logging.info(
+                f"Concept {concept_name} accuracy: {concept_acc[concept_name]:.2g}"
+            )
+        explanation_inv = explanation_invariance_exact(
+            conc_importance,
+            dihedral_group,
+            test_loader,
+            device,
+            similarity=accuracy,
+        )
+        conc_importance.remove_hook()
+        for inv_model, inv_expl in zip(model_inv, explanation_inv):
+            metrics.append(
+                {
+                    "Model Type": model_type,
+                    "Explanation": f"{attr_name}-{layer_name}",
+                    "Model Invariance": inv_model.item(),
+                    "Explanation Invariance": inv_expl.item(),
+                }
+            )
+        logging.info(f"Explanation invariance: {torch.mean(explanation_inv):.3g}")
+    metrics_df = pd.DataFrame(data=metrics)
+    metrics_df.to_csv(save_dir / "metrics.csv", index=False)
+    if plot:
+        single_robustness_plots(save_dir, "stl10", "concept_importance")
+
+
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -281,6 +358,14 @@ if __name__ == "__main__":
                 )
             case "example_importance":
                 example_importance(
+                    random_seed=args.seed,
+                    batch_size=args.batch_size,
+                    model_name=model_name,
+                    plot=args.plot,
+                    n_test=args.n_test,
+                )
+            case "concept_importance":
+                concept_importance(
                     random_seed=args.seed,
                     batch_size=args.batch_size,
                     model_name=model_name,

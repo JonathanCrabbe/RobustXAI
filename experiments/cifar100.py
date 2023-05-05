@@ -272,7 +272,7 @@ def concept_importance(
     if not save_dir.exists():
         os.makedirs(save_dir)
     dihedral_group = Dihedral()
-    model = Wide_ResNet(conv2triv=False)  # TODO remove
+    model = Wide_ResNet()
     checkpoint = torch.load(get_best_checkpoint(model_dir))
     model.load_state_dict(checkpoint["state_dict"], strict=False)
     model_type = "D8-Wide-ResNet"

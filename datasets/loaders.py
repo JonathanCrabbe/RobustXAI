@@ -785,7 +785,7 @@ class Cifar100Dataset(pl.LightningDataModule, ConceptDataset):
         return X[rand_perm], C[rand_perm]
 
 
-class STL10Dataset(pl.LightningDataModule):
+class STL10Dataset(pl.LightningDataModule, ConceptDataset):
     def __init__(self, data_dir: Path, batch_size: int = 32, num_predict: int = 500):
         super().__init__()
         self.data_dir = data_dir
@@ -856,6 +856,53 @@ class STL10Dataset(pl.LightningDataModule):
 
     def teardown(self, stage: str):
         ...
+
+    def concept_names(self):
+        return ["Wings", "Vehicles"]
+
+    def generate_concept_dataset(self, concept_id: int, concept_set_size: int) -> tuple:
+        train_set = self.stl10_train
+        classes = train_set.classes
+        concept_to_classes = {
+            "Vehicles": {
+                "airplane",
+                "car",
+                "ship",
+                "truck",
+            },
+            "Wings": {
+                "bird",
+                "airplane",
+            },
+        }
+        labels = torch.Tensor(train_set.labels)
+        mask = []
+        for label in labels:
+            mask.append(
+                classes[int(label)]
+                in concept_to_classes[self.concept_names()[concept_id]]
+            )
+        mask = torch.BoolTensor(mask)
+        positive_idx = torch.nonzero(mask).flatten()
+        negative_idx = torch.nonzero(~mask).flatten()
+        positive_loader = torch.utils.data.DataLoader(
+            train_set,
+            batch_size=concept_set_size,
+            sampler=SubsetRandomSampler(positive_idx),
+        )
+        negative_loader = torch.utils.data.DataLoader(
+            train_set,
+            batch_size=concept_set_size,
+            sampler=SubsetRandomSampler(negative_idx),
+        )
+        X_pos, C_pos = next(iter(positive_loader))
+        X_neg, C_neg = next(iter(negative_loader))
+        X = torch.concatenate((X_pos, X_neg), 0)
+        C = torch.concatenate(
+            (torch.ones(concept_set_size), torch.zeros(concept_set_size)), 0
+        )
+        rand_perm = torch.randperm(len(X))
+        return X[rand_perm], C[rand_perm]
 
 
 class Cutout:
