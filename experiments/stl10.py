@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import logging
 import os
+import warnings
 import pandas as pd
 from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
 from models.images import Wide_ResNet
@@ -258,30 +259,33 @@ if __name__ == "__main__":
     parser.add_argument("--max_epochs", type=int, default=1000)
     args = parser.parse_args()
     model_name = f"stl10_d8_wideresnet_seed{args.seed}"
-    if args.train:
-        train_stl10_model(
-            random_seed=args.seed,
-            batch_size=args.batch_size,
-            use_wandb=args.use_wandb,
-            model_name=model_name,
-            max_epochs=args.max_epochs,
-        )
-    match args.name:
-        case "feature_importance":
-            feature_importance(
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=UserWarning)
+        # E2CNN generates many unimportant user warnings
+        if args.train:
+            train_stl10_model(
                 random_seed=args.seed,
                 batch_size=args.batch_size,
+                use_wandb=args.use_wandb,
                 model_name=model_name,
-                plot=args.plot,
-                n_test=args.n_test,
+                max_epochs=args.max_epochs,
             )
-        case "example_importance":
-            example_importance(
-                random_seed=args.seed,
-                batch_size=args.batch_size,
-                model_name=model_name,
-                plot=args.plot,
-                n_test=args.n_test,
-            )
-        case other:
-            raise NotImplementedError(f"Experiment {args.name} does not exist.")
+        match args.name:
+            case "feature_importance":
+                feature_importance(
+                    random_seed=args.seed,
+                    batch_size=args.batch_size,
+                    model_name=model_name,
+                    plot=args.plot,
+                    n_test=args.n_test,
+                )
+            case "example_importance":
+                example_importance(
+                    random_seed=args.seed,
+                    batch_size=args.batch_size,
+                    model_name=model_name,
+                    plot=args.plot,
+                    n_test=args.n_test,
+                )
+            case other:
+                raise NotImplementedError(f"Experiment {args.name} does not exist.")
