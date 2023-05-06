@@ -79,7 +79,6 @@ def train_cifar100_model(
             save_top_k=-1,
             filename=model_name + "-{epoch:02d}-{val_acc:.2f}",
         ),
-        EarlyStopping(monitor="val_acc", patience=20, mode="max"),
     ]
     trainer = pl.Trainer(
         logger=logger,
