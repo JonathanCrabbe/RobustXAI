@@ -14,7 +14,21 @@ from pathlib import Path
 
 sns.set_style("whitegrid")
 sns.set_palette("colorblind")
-markers = ["o", "s", "X", "D", "v", "p"]
+markers = {
+    "DeepLift": "o",
+    "Feature Ablation": "s",
+    "Feature Occlusion": "X",
+    "Feature Permutation": "D",
+    "Gradient Shap": "v",
+    "Integrated Gradients": "p",
+    "Influence Functions": "^",
+    "Rep. Similar-Lin1": "*",
+    "SimplEx-Lin1": "H",
+    "TracIn": ">",
+    "CAR-Lin1": "<",
+    "CAV-Lin1": "d",
+}
+# markers = ["o", "s", "X", "D", "v", "p"]
 
 
 def single_robustness_plots(plot_dir: Path, dataset: str, experiment_name: str) -> None:
@@ -74,7 +88,7 @@ def global_robustness_plots(experiment_name: str) -> None:
         "Representation Similarity-Conv1": "Rep. Similar-Equiv",
         "CAR-Layer3": "CAR-Inv",
         "CAV-Layer3": "CAV-Inv",
-        "Simplex-Layer3": "SimplEx-Inv",
+        "SimplEx-Layer3": "SimplEx-Inv",
         "Representation Similarity-Layer3": "Rep. Similar-Inv",
     }
     global_df = global_df.replace(rename_dic)
@@ -340,13 +354,17 @@ def global_relax_invariance() -> None:
     n_datasets = len(global_df["Dataset"].unique())
 
     # Create a grid of plots
-    fig, axs = plt.subplots(nrows=n_datasets, ncols=3, figsize=(17, 12), sharex=True)
+    fig, axs = plt.subplots(nrows=n_datasets, ncols=3, figsize=(17, 9), sharex=True)
 
     datasets = global_df["Dataset"].unique()
-    models = global_df["Model Type"].unique()
+    y_titles = [
+        "Feature Importance Equivariance",
+        "Example Importance Invariance",
+        "Concept Importance Invariance",
+    ]
     experiments = global_df["Experiment"].unique()
-    explanations_legends = {}
-
+    style_handles = []
+    style_labels = []
     # Loop over the subplots and plot the data
     for i, dataset in enumerate(datasets):  # rows
         for j, experiment in enumerate(experiments):  # columns
@@ -375,7 +393,7 @@ def global_relax_invariance() -> None:
                 edgecolor="black",
                 alpha=0.5,
                 style="Explanation",
-                markers=markers[: metrics_df["Explanation"].nunique()],
+                markers=markers,
                 s=200,
             )
             ax.errorbar(
@@ -393,41 +411,35 @@ def global_relax_invariance() -> None:
             ax.axline((0, 0), slope=1, color="gray", linestyle="dotted")
             ax.set_xlim(0, 1.1)
             ax.set_ylim(0, 1.1)
+            ax.set_ylabel(y_titles[j])
             # Get handles and labels for hue and style legends
             handles, labels = ax.get_legend_handles_labels()
-            explanation_cut = labels.index("Explanation")
-            hue_handles = handles[:explanation_cut]  # first half of handles are for hue
-            hue_labels = labels[:explanation_cut]
-            style_handles = handles[
-                explanation_cut + 1 :
-            ]  # second half of handles are for style
-            style_labels = labels[explanation_cut + 1 :]
-
+            explanation_cut = labels.index("Explanation") + int(j > 0)
             # Create separate legends for hue and style
+            if i == 0 and j == 0:
+                hue_handles = handles[
+                    :explanation_cut
+                ]  # first half of handles are for hue
+                hue_labels = labels[:explanation_cut]
             if i == len(datasets) - 1:
-                ax.legend(
-                    style_handles,
-                    style_labels,
-                    loc="center",
-                    bbox_to_anchor=(0.5, -0.4),
-                    title="Explanation",
-                    frameon=False,
-                )
-            else:
-                ax.legend().remove()
+                style_handles.extend(handles[explanation_cut:])
+                style_labels.extend(labels[explanation_cut:])
+
+            ax.legend().remove()
             if j == 1:
                 ax.set_title(dataset)
     fig.legend(
-        hue_handles,
-        hue_labels,
+        hue_handles + style_handles,
+        hue_labels + style_labels,
         loc="lower center",
-        ncol=4,
-        bbox_to_anchor=(0.5, 0),
-        frameon=False,
+        ncol=5,
+        bbox_to_anchor=(0.5, -0.1),
     )
-    fig.tight_layout()
+    # fig.tight_layout()
 
-    plt.savefig(Path.cwd() / f"results/global_relax_invariance.pdf")
+    plt.savefig(
+        Path.cwd() / f"results/global_relax_invariance.pdf", bbox_inches="tight"
+    )
     plt.close()
 
 

@@ -417,7 +417,13 @@ def enforce_invariance(
             )
             if isinstance(attr_method, ConceptExplainer):
                 attr_method.fit(device, concept_set_size)
-            for N_inv in [1, 5, 50, int(group_size / 2), int(group_size)]:
+            for N_inv in [
+                1,
+                int(group_size / 4),
+                int(group_size / 2),
+                int(3 * group_size / 4),
+                int(group_size),
+            ]:
                 logging.info(
                     f"Now working with invariant explainer with N_inv = {N_inv}"
                 )
