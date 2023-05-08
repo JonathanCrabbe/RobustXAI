@@ -3,5 +3,6 @@
   "Muta.": "results/mut/gnn32_seed42",
   "M.Net40": "results/mnet/dset256_seed42",
   "Fa.MNIST": "results/fashion_mnist/cnn32_seed42",
+  "CIFAR100(*)": "results/cifar100/cifar100_d8_wideresnet_seed42",
   "STL10(*)": "results/stl10/stl10_d8_wideresnet_seed42"
 }

@@ -52,7 +52,7 @@ def single_robustness_plots(plot_dir: Path, dataset: str, experiment_name: str) 
 
 
 def global_robustness_plots(experiment_name: str) -> None:
-    sns.set(font_scale=1.2)
+    sns.set(font_scale=1.0)
     sns.set_style("whitegrid")
     sns.set_palette("colorblind")
     with open(Path.cwd() / "results_dir.json") as f:
@@ -446,7 +446,7 @@ def global_relax_invariance() -> None:
 def training_dynamic_plot(
     data_path: Path = Path.cwd() / "results/d8-wideresnet-training_dynamics.csv",
 ) -> None:
-    sns.set(font_scale=1.2)
+    sns.set(font_scale=1.0)
     sns.set_style("whitegrid")
     df = pd.read_csv(data_path)
     df = df[
