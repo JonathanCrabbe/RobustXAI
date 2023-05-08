@@ -443,6 +443,47 @@ def global_relax_invariance() -> None:
     plt.close()
 
 
+def training_dynamic_plot(
+    data_path: Path = Path.cwd() / "results/d8-wideresnet-training_dynamics.csv",
+) -> None:
+    sns.set(font_scale=1.2)
+    sns.set_style("whitegrid")
+    df = pd.read_csv(data_path)
+    df = df[
+        [
+            "epoch",
+            "cifar100_d8_wideresnet_seed42 - model_invariance",
+            "stl10_d8_wideresnet_seed42 - model_invariance",
+            "cifar100_d8_wideresnet_seed42 - gradient_equivariance",
+            "stl10_d8_wideresnet_seed42 - gradient_equivariance",
+        ]
+    ]
+    rename_cols = {
+        "epoch": "Epoch",
+        "cifar100_d8_wideresnet_seed42 - model_invariance": "CIFAR100 Model Invariance",
+        "stl10_d8_wideresnet_seed42 - model_invariance": "STL10 Model Invariance",
+        "cifar100_d8_wideresnet_seed42 - gradient_equivariance": "CIFAR100 Gradient Equivariance",
+        "stl10_d8_wideresnet_seed42 - gradient_equivariance": "STL10 Gradient Equivariance",
+    }
+    df = df.rename(columns=rename_cols)
+    data = []
+    for dataset in ["CIFAR100", "STL10"]:
+        for property in ["Model Invariance", "Gradient Equivariance"]:
+            for epoch, score in df[["Epoch", f"{dataset} {property}"]].values:
+                data.append(
+                    {
+                        "Dataset": dataset,
+                        "Property": property,
+                        "Epoch": epoch,
+                        "Score": score,
+                    }
+                )
+
+    plot_df = pd.DataFrame(data)
+    sns.lineplot(data=plot_df, x="Epoch", y="Score", hue="Dataset", style="Property")
+    plt.savefig(Path.cwd() / "results/training_dynamics.pdf", bbox_inches="tight")
+
+
 if __name__ == "__main__":
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
@@ -464,11 +505,11 @@ if __name__ == "__main__":
     }
     plot_path = (
         (Path.cwd() / path_dic[dataset_full_names[args.dataset]] / args.experiment_name)
-        if "global" not in args.plot_name
+        if "global" not in args.plot_name and args.plot_name != "training_dynamics"
         else Path.cwd() / "results"
     )
 
-    logging.info(f"Saving {args.plot_name} plot for {args.dataset} in {str(plot_path)}")
+    logging.info(f"Saving {args.plot_name} plot in {str(plot_path)}")
     match args.plot_name:
         case "robustness":
             single_robustness_plots(plot_path, args.dataset, args.experiment_name)
@@ -484,5 +525,7 @@ if __name__ == "__main__":
             sensitivity_plot(plot_path, args.dataset)
         case "global_relax_invariance":
             global_relax_invariance()
+        case "training_dynamics":
+            training_dynamic_plot()
         case other:
             raise ValueError("Unknown plot name")
