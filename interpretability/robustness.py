@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tqdm import tqdm
 from torch.utils.data import DataLoader
-from utils.symmetries import Symmetry
+from utils.symmetries import Symmetry, AnchoredTranslation2D, Translation2D
 from random import shuffle
 from captum.metrics import sensitivity_max
 from captum.attr import Attribution, GradientShap, Occlusion
@@ -148,14 +148,23 @@ def explanation_invariance_exact(
     for x, y in tqdm(data_loader, leave=False, unit="batch"):
         batch_scores = None
         x, y = x.to(device), y.to(device)
+        if isinstance(symmetry, Translation2D) and isinstance(
+            explainer, InvariantExplainer
+        ):
+            explainer.anchor = (0, 0)
         e1 = explainer(x, y)
         for param in tqdm(symmetry.get_all_symmetries(x), leave=False, unit="symmetry"):
             symmetry.set_symmetry(param)
+            if isinstance(symmetry, Translation2D) and isinstance(
+                explainer, InvariantExplainer
+            ):
+                explainer.anchor = param
             e2 = explainer(symmetry(x), y)
+            sim = similarity(e1, e2).detach().cpu()
             if batch_scores is None:
-                batch_scores = similarity(e1, e2).detach().cpu()
+                batch_scores = sim
             else:
-                batch_scores += similarity(e1, e2).detach().cpu()
+                batch_scores += sim
         invariance_scores.append(batch_scores / len(symmetry.get_all_symmetries(x)))
     invariance_scores = torch.cat(invariance_scores)
     return invariance_scores
@@ -297,8 +306,11 @@ class InvariantExplainer(nn.Module):
         self.symmetry = symmetry
         self.N_inv = N_inv
         self.round = round
+        self.anchor = (0, 0)
 
     def forward(self, x, y) -> torch.Tensor:
+        if isinstance(self.symmetry, AnchoredTranslation2D):
+            self.symmetry.set_anchor_point(self.anchor)
         explanation = self.explainer(x, y)
         if self.symmetry.get_all_symmetries(x):
             params = self.symmetry.get_all_symmetries(x)[1:]

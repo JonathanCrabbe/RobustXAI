@@ -30,7 +30,7 @@ from interpretability.example import (
     TracIn,
 )
 from interpretability.concept import CAR, CAV, ConceptExplainer
-from utils.symmetries import Translation2D
+from utils.symmetries import Translation2D, AnchoredTranslation2D
 from interpretability.robustness import (
     model_invariance_exact,
     explanation_equivariance_exact,
@@ -419,8 +419,8 @@ def enforce_invariance(
                 attr_method.fit(device, concept_set_size)
             for N_inv in [
                 1,
+                10,
                 int(group_size / 4),
-                int(group_size / 2),
                 int(3 * group_size / 4),
                 int(group_size),
             ]:
@@ -429,7 +429,9 @@ def enforce_invariance(
                 )
                 inv_method = InvariantExplainer(
                     attr_method,
-                    translation,
+                    AnchoredTranslation2D(
+                        5
+                    ),  # This group handles composition of translations
                     N_inv,
                     isinstance(attr_method, ConceptExplainer),
                 )
