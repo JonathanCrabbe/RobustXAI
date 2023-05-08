@@ -5,6 +5,7 @@ from abc import ABC, abstractmethod
 from e2cnn import gspaces
 from e2cnn import nn as e2nn
 from torchvision.transforms.functional import rotate
+from typing import Tuple
 
 
 class Symmetry(nn.Module, ABC):
@@ -35,7 +36,7 @@ class Translation1D(Symmetry):
 
     def forward(self, x):
         T = x.shape[-1]
-        if not self.n_steps:
+        if self.n_steps is None:
             self.sample_symmetry(x)
         perm_ids = torch.arange(0, T).to(x.device)
         perm_ids = perm_ids - self.n_steps
@@ -116,7 +117,7 @@ class Translation2D(Symmetry):
 
     def forward(self, x):
         W, H = x.shape[-2:]
-        if not self.h or not self.w:
+        if self.h is None or self.w is None:
             self.sample_symmetry(x)
         w_perm_ids = torch.arange(0, W).to(x.device)
         h_perm_ids = torch.arange(0, H).to(x.device)
@@ -133,10 +134,11 @@ class Translation2D(Symmetry):
         self.h = random.randint(-self.max_displacement, self.max_displacement)
 
     def get_all_symmetries(self, x):
-        return [
+        return [(0, 0)] + [
             (w, h)
             for w in range(-self.max_displacement, self.max_displacement + 1)
             for h in range(-self.max_displacement, self.max_displacement + 1)
+            if (w, h) != (0, 0)
         ]
 
     def set_symmetry(self, displacement):
@@ -172,3 +174,36 @@ class Dihedral(Symmetry):
 
     def set_symmetry(self, symmetry_param):
         self.group_element = symmetry_param
+
+
+class AnchoredTranslation2D(Translation2D):
+    """
+    This class implements a 2D translation symmetry with an anchor point.
+    Let g1 be the translation corresponding to the anchor point.
+    Let g2 be the translation corresponding to the displacement (w, h).
+    This class applies the symmetry g1 o g2 o g1^{-1}.
+    This avoids the resulting translation to go out of scope by wrapping the product (g1 o g2).
+    Note that the forward assumes that g1 was already applied to the input image x.
+    """
+
+    def __init__(self, max_dispacement: int, h: int = 0, w: int = 0):
+        super().__init__(max_dispacement, h, w)
+        self.set_anchor_point((0, 0))
+
+    def set_anchor_point(self, anchor_point: Tuple[int, int]) -> None:
+        self.anchor_point = anchor_point
+
+    def set_symmetry(self, displacement):
+        w, h = displacement
+        x, y = self.anchor_point
+        self.w = self.wrap_coord(x + w) - x
+        self.h = self.wrap_coord(y + h) - y
+
+    def wrap_coord(self, x):
+        res = x
+        if res > self.max_displacement:
+            res -= 2 * self.max_displacement + 1
+        elif res < -self.max_displacement:
+            res += 2 * self.max_displacement + 1
+        assert -self.max_displacement <= res <= self.max_displacement
+        return res
