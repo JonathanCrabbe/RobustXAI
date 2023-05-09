@@ -109,9 +109,9 @@ class SetPermutation(Symmetry):
 
 
 class Translation2D(Symmetry):
-    def __init__(self, max_dispacement: int, h: int = None, w: int = None):
+    def __init__(self, max_displacement: int, h: int = None, w: int = None):
         super().__init__()
-        self.max_displacement = max_dispacement
+        self.max_displacement = max_displacement
         self.h = h
         self.w = w
 
