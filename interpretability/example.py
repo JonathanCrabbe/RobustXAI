@@ -8,6 +8,8 @@ from torch_geometric.data import Data as GraphData
 from pathlib import Path
 from utils.misc import direct_sum
 from tqdm import tqdm
+from typing import List, Optional, Any
+from e2cnn.nn import GeometricTensor
 
 
 class ExampleBasedExplainer(nn.Module, ABC):
@@ -29,6 +31,9 @@ class SimplEx(ExampleBasedExplainer):
         self.H = torch.empty(0)
 
         def hook(module, input, output):
+            # Handle tensor conversion
+            if isinstance(output, GeometricTensor):
+                output = output.tensor
             self.H = output.flatten(start_dim=1).detach()
 
         self.handle = layer.register_forward_hook(hook)
@@ -71,6 +76,9 @@ class RepresentationSimilarity(ExampleBasedExplainer):
         self.H = torch.empty(0)
 
         def hook(module, input, output):
+            # Handle tensor conversion
+            if isinstance(output, GeometricTensor):
+                output = output.tensor
             self.H = output.flatten(start_dim=1).detach()
 
         self.handle = layer.register_forward_hook(hook)
@@ -96,13 +104,18 @@ class TracIn(ExampleBasedExplainer):
         Y_train: torch.Tensor,
         loss_function: callable,
         save_dir: Path,
+        checkpoint_files: Optional[List[Path]] = None,
         **kwargs,
     ):
         super().__init__(model, X_train)
         self.last_layer = model.last_layer()
         self.save_dir = save_dir / "tracin"
         self.loss_function = loss_function
-        self.checkpoints = model.checkpoints_files
+        self.checkpoints = (
+            checkpoint_files
+            if checkpoint_files is not None
+            else model.checkpoints_files
+        )
         self.device = X_train.device
         train_subset = TensorDataset(X_train, Y_train)
         self.subtrain_loader = DataLoader(train_subset, batch_size=1, shuffle=False)
@@ -120,7 +133,9 @@ class TracIn(ExampleBasedExplainer):
             test_grad = None
             x_test, y_test = x_test.to(self.device), y_test.to(self.device)
             for checkpoint in self.checkpoints:
-                self.model.load_state_dict(torch.load(checkpoint), strict=False)
+                self.model.load_state_dict(
+                    self.load_model_dict(checkpoint), strict=False
+                )
                 test_loss = self.loss_function(self.model(x_test), y_test)
                 if test_grad is not None:
                     test_grad += direct_sum(
@@ -141,10 +156,24 @@ class TracIn(ExampleBasedExplainer):
         return attribution
 
     def compute_train_grads(self) -> None:
-        for train_idx, (x_train, y_train) in enumerate(self.subtrain_loader):
+        for train_idx, (x_train, y_train) in enumerate(
+            tqdm(
+                self.subtrain_loader,
+                desc="TracIN pre-computing train grads",
+                unit="example",
+                leave=False,
+            )
+        ):
             grad = None
-            for checkpoint in self.checkpoints:
-                self.model.load_state_dict(torch.load(checkpoint), strict=False)
+            for checkpoint in tqdm(
+                self.checkpoints,
+                desc="Checkpoint Progress",
+                leave=False,
+                unit="checkpoint",
+            ):
+                self.model.load_state_dict(
+                    self.load_model_dict(checkpoint), strict=False
+                )
                 loss = self.loss_function(self.model(x_train), y_train)
                 if grad is not None:
                     grad += direct_sum(
@@ -160,6 +189,14 @@ class TracIn(ExampleBasedExplainer):
                     )
             torch.save(grad.detach().cpu(), self.save_dir / f"train_grad{train_idx}.pt")
         self.train_grads = True
+
+    @staticmethod
+    def load_model_dict(checkpoint_path: Path) -> Any:
+        model_dict = torch.load(checkpoint_path)
+        # If the checkpoint is a pytorch lightning checkpoint we need to extract the model state dict
+        if ".ckpt" in checkpoint_path.name:
+            model_dict = model_dict["state_dict"]
+        return model_dict
 
 
 class InfluenceFunctions(ExampleBasedExplainer):
@@ -193,7 +230,14 @@ class InfluenceFunctions(ExampleBasedExplainer):
         damp: float = 1e-3,
         scale: float = 1000,
     ) -> None:
-        for train_idx, (x_train, y_train) in enumerate(self.subtrain_loader):
+        for train_idx, (x_train, y_train) in enumerate(
+            tqdm(
+                self.subtrain_loader,
+                unit="example",
+                desc="Influence Function precomputing",
+                leave=False,
+            )
+        ):
             x_train = x_train.to(self.device)
             loss = self.loss_function(self.model(x_train), y_train)
             grad = direct_sum(
@@ -203,7 +247,12 @@ class InfluenceFunctions(ExampleBasedExplainer):
             )
             ihvp = grad.detach().clone()
             train_sampler = iter(self.train_loader)
-            for _ in range(self.recursion_depth):
+            for _ in tqdm(
+                range(self.recursion_depth),
+                desc="Influence Function IHVP",
+                leave=False,
+                unit="recursion",
+            ):
                 X_sample, Y_sample = next(train_sampler)
                 X_sample, Y_sample = X_sample.to(self.device), Y_sample.to(self.device)
                 sampled_loss = self.loss_function(self.model(X_sample), Y_sample)

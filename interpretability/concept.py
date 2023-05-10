@@ -1,5 +1,4 @@
 import abc
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -12,6 +11,8 @@ from datasets.loaders import ConceptDataset
 from torch_geometric.data import Data as GraphData
 from torch_geometric.loader import DataLoader as GraphDataLoader
 from sklearn.metrics import accuracy_score
+from e2cnn.nn import GeometricTensor
+from typing import Optional
 
 
 class ConceptExplainer(ABC, nn.Module):
@@ -21,15 +22,24 @@ class ConceptExplainer(ABC, nn.Module):
 
     @abc.abstractmethod
     def __init__(
-        self, model: nn.Module, dataset: ConceptDataset, layer: nn.Module, **kwargs
+        self,
+        model: nn.Module,
+        dataset: ConceptDataset,
+        layer: nn.Module,
+        batch_size: int = 100,
+        **kwargs
     ):
         super(ConceptExplainer, self).__init__()
         self.model = model
         self.classifiers = None
         self.dataset = dataset
         self.H = None
+        self.batch_size = batch_size
 
         def hook(module, input, output):
+            # Handle conversion to tensor in case of GeometricTensor
+            if isinstance(output, GeometricTensor):
+                output = output.tensor
             self.H = output.flatten(start_dim=1).detach().cpu().numpy()
 
         self.handle = layer.register_forward_hook(hook)
@@ -63,9 +73,10 @@ class CAR(ConceptExplainer):
         dataset: ConceptDataset,
         layer: nn.Module,
         kernel: str = "rbf",
+        batch_size: int = 100,
         **kwargs
     ):
-        super(CAR, self).__init__(model, dataset, layer)
+        super(CAR, self).__init__(model, dataset, layer, batch_size)
         self.kernel = kernel
 
     def fit(self, device: torch.device, concept_set_size: int = 100) -> None:
@@ -77,8 +88,12 @@ class CAR(ConceptExplainer):
             X_train, C_train = self.dataset.generate_concept_dataset(
                 concept_id, concept_set_size
             )
-            self.model(X_train.to(device))
-            H_proj = encoder.fit_transform(self.H)
+            H_train = []
+            for x_train in torch.split(X_train, self.batch_size):
+                self.model(x_train.to(device))
+                H_train.append(self.H)
+            H_train = np.concatenate(H_train, axis=0)
+            H_proj = encoder.fit_transform(H_train)
             classifier.fit(H_proj, C_train.numpy())
             encoders.append(encoder)
             classifiers.append(classifier)
@@ -109,10 +124,13 @@ class CAR(ConceptExplainer):
             X_test, C_test = test_set.generate_concept_dataset(
                 concept_id, concept_set_size
             )
-            self.model(X_test.to(device))
-            H_test = self.H.copy()
-            H_proj = encoder.transform(H_test)
-            C_pred = classifier.predict(H_proj)
+            C_pred = []
+            for x_test in torch.split(X_test, self.batch_size):
+                self.model(x_test.to(device))
+                h_test = self.H.copy()
+                h_proj = encoder.transform(h_test)
+                C_pred.append(classifier.predict(h_proj))
+            C_pred = np.concatenate(C_pred, axis=0)
             accuracies[test_set.concept_names()[concept_id]] = accuracy_score(
                 C_test, C_pred
             )
@@ -126,9 +144,10 @@ class CAV(ConceptExplainer):
         dataset: ConceptDataset,
         layer: nn.Module,
         n_classes: int,
+        batch_size: int = 100,
         **kwargs
     ):
-        super(CAV, self).__init__(model, dataset, layer)
+        super(CAV, self).__init__(model, dataset, layer, batch_size)
         self.n_classes = n_classes
 
     def fit(self, device: torch.device, concept_set_size: int = 100) -> None:
@@ -138,8 +157,12 @@ class CAV(ConceptExplainer):
             X_train, C_train = self.dataset.generate_concept_dataset(
                 concept_id, concept_set_size
             )
-            self.model(X_train.to(device))
-            classifier.fit(self.H, C_train.numpy())
+            H_train = []
+            for x_train in torch.split(X_train, self.batch_size):
+                self.model(x_train.to(device))
+                H_train.append(self.H)
+            H_train = np.concatenate(H_train, axis=0)
+            classifier.fit(H_train, C_train.numpy())
             classifiers.append(classifier)
         self.classifiers = classifiers
 
@@ -180,9 +203,12 @@ class CAV(ConceptExplainer):
             X_test, C_test = test_set.generate_concept_dataset(
                 concept_id, concept_set_size
             )
-            self.model(X_test.to(device))
-            H_test = self.H.copy()
-            C_pred = classifier.predict(H_test)
+            C_pred = []
+            for x_test in torch.split(X_test, self.batch_size):
+                self.model(x_test.to(device))
+                h_test = self.H.copy()
+                C_pred.append(classifier.predict(h_test))
+            C_pred = np.concatenate(C_pred, axis=0)
             accuracies[test_set.concept_names()[concept_id]] = accuracy_score(
                 C_test, C_pred
             )

@@ -7,21 +7,25 @@ Code Author: Jonathan Crabbé ([jc2133@cam.ac.uk](mailto:jc2133@cam.ac.uk))
 This repository contains the implementation of the explanation invariance and equivariance metrics, a framework to evaluate the robustness of interpretability methods.
 For more details, please read our [paper](https://arxiv.org/abs/2304.06715): 'Evaluating the Robustness of Interpretability Methods through Explanation Invariance and Equivariance'.
 
-## 1. Installation
+# 1. Installation
 
 
 From repository:
 1. Clone the repository.
-2. Install the required packages from the `environment.yml` file with conda.
+2. [Install Fortran](https://fortran-lang.org/en/learn/os_setup/install_gfortran/) on your machines (this is a prerequisite for the `py3nj` package).
+3. Install the required packages from the `environment.yml` file with conda.
 
 ```shell
 conda env create -f environment.yml
 ```
-3. Activate the created environment.
+4. Activate the created environment.
+```shell
+conda activate robustxai
+```
 
 When the packages are installed, you are ready to evaluate interpretability methods!
 
-## 2. Toy example
+# 2. Toy example
 
 Bellow, you can find a toy demonstration where we evaluate the explanation equivariance score for Integrated Gradients explanations of a Fashion-MNIST classifier. The relevant code can be found in the folder
 [interpretability](interpretability).
@@ -71,17 +75,17 @@ print(f'{explanation_equiv=:.2f}')
 
 
 
-## 3. Reproducing the paper results
+# 3. Reproducing the paper results
 
-### ECG Dataset
+## 3.A. ECG Dataset
 Our script automatically downloads the ECG dataset from Kaggle. To do so, one has
 to create a Kaggle token as explained [here](https://towardsdatascience.com/downloading-datasets-from-kaggle-for-your-ml-project-b9120d405ea4).
 Once the token is properly set-up, one can run our experiments with the script
 ```shell
 python -m experiments.ecg --name experiment_name --train --plot
 ```
-where the --train option should only be used one time to fit a model for all the experiments.
-The experiment_name parameter can take the following values:
+where the `--train`  option should only be used one time to fit a model for all the experiments.
+The `experiment_name` parameter can take the following values:
 
 | experiment_name          | description                                                     |
 |--------------------------|-----------------------------------------------------------------|
@@ -94,13 +98,13 @@ The experiment_name parameter can take the following values:
 
 The resulting plots and data are saved [here](results/ecg).
 
-### Mutagenicity Dataset
+## 3.B. Mutagenicity Dataset
 One can run our experiments with the script
 ```shell
 python -m experiments.mut --name experiment_name --train --plot
 ```
-where the --train option should only be used one time to fit a model for all the experiments.
-The experiment_name parameter can take the following values:
+where the `--train`  option should only be used one time to fit a model for all the experiments.
+The `experiment_name` parameter can take the following values:
 
 | experiment_name          | description                                                     |
 |--------------------------|-----------------------------------------------------------------|
@@ -110,15 +114,15 @@ The experiment_name parameter can take the following values:
 
 The resulting plots and data are saved [here](results/mut).
 
-### ModelNet40 Dataset
+## 3.C. ModelNet40 Dataset
 Our script automatically downloads the ModelNet40 dataset from Kaggle. To do so, one has
 to create a Kaggle token as explained [here](https://towardsdatascience.com/downloading-datasets-from-kaggle-for-your-ml-project-b9120d405ea4).
 Once the token is properly set-up, one can run our experiments with the script
 ```shell
 python -m experiments.mnet --name experiment_name --train --plot
 ```
-where the --train option should only be used one time to fit a model for all the experiments.
-The experiment_name parameter can take the following values:
+where the `--train`  option should only be used one time to fit a model for all the experiments.
+The `experiment_name` parameter can take the following values:
 
 | experiment_name          | description                                                     |
 |--------------------------|-----------------------------------------------------------------|
@@ -127,7 +131,59 @@ The experiment_name parameter can take the following values:
 | concept_importance      | Concept-based invariance Section 3.1   |
 
 The resulting plots and data are saved [here](results/mnet).
-## 4. Citing
+
+## 3.D. FashionMNIST Dataset
+One can run our experiments with the script
+```shell
+python -m experiments.fashion_mnist --name experiment_name --train --plot
+```
+where the `--train`  option should only be used one time to fit a model for all the experiments.
+The `experiment_name` parameter can take the following values:
+
+| experiment_name          | description                                                     |
+|--------------------------|-----------------------------------------------------------------|
+| feature_importance         | Feature importance equivariance Section 3.1     |
+| example_importance | Example importance invariance Section 3.1 |
+| concept_importance      | Concept-based invariance Section 3.1   |
+| enforce_invariance       | Improving robustness Section 3.2 |
+
+
+The resulting plots and data are saved [here](results/fashion_mnist).
+
+## 3.E. CIFAR100 Dataset
+One can run our experiments with the script
+```shell
+python -m experiments.cifar100 --name experiment_name --train --plot
+```
+where the `--train` option should only be used one time to fit a model for all the experiments. If you have [WandB](https://wandb.ai/site) set-up, you can also use the `--use_wandb` option to log the results to your WandB account.
+The `experiment_name` parameter can take the following values:
+
+| experiment_name          | description                                                     |
+|--------------------------|-----------------------------------------------------------------|
+| feature_importance         | Feature importance equivariance Section 3.3     |
+| example_importance | Example importance invariance Section 3.3 |
+| concept_importance      | Concept-based invariance Section 3.3   |
+
+## 3.F. STL10 Dataset
+One can run our experiments with the script
+```shell
+python -m experiments.stl10 --name experiment_name --train --plot
+```
+where the `--train` option should only be used one time to fit a model for all the experiments. If you have [WandB](https://wandb.ai/site) set-up, you can also use the `--use_wandb` option to log the results to your WandB account.
+The `experiment_name` parameter can take the following values:
+
+| experiment_name          | description                                                     |
+|--------------------------|-----------------------------------------------------------------|
+| feature_importance         | Feature importance equivariance Section 3.3     |
+| example_importance | Example importance invariance Section 3.3 |
+| concept_importance      | Concept-based invariance Section 3.3   |
+
+The resulting plots and data are saved [here](results/stl10).
+
+## 3.G. Failure Modes
+To visualize failure modes of various interpretability methods, one can use the Jupyter notebook [here](explanations_fail.ipynb). Note that this assumes that models have been trained for the FashionMNIST and the STL10 datasets. All the parameters from this notebook can be adapted to explore more failure modes.
+
+# 4. Citing
 
 If you use this code, please cite the associated paper:
 

@@ -6,10 +6,11 @@ import numpy as np
 import networkx as nx
 import random
 import h5py
+import pytorch_lightning as pl
 from torchvision.transforms import transforms
 from pathlib import Path
 from torch.utils.data import Dataset, SubsetRandomSampler
-from torchvision.datasets import FashionMNIST
+from torchvision.datasets import FashionMNIST, CIFAR100, STL10
 from imblearn.over_sampling import SMOTE
 from abc import ABC, abstractmethod
 from torch_geometric.datasets import TUDataset
@@ -648,3 +649,295 @@ class FashionMnistDataset(ConceptDataset, FashionMNIST):
         )
         rand_perm = torch.randperm(len(X))
         return X[rand_perm], C[rand_perm]
+
+
+class Cifar100Dataset(pl.LightningDataModule, ConceptDataset):
+    def __init__(self, data_dir: Path, batch_size: int = 32, num_predict: int = 500):
+        super().__init__()
+        self.data_dir = data_dir
+        self.batch_size = batch_size
+        self.num_predict = num_predict
+
+    def setup(self, stage: str):
+        normalize = transforms.Normalize(
+            mean=np.array([125.3, 123.0, 113.9]) / 255.0,
+            std=np.array([63.0, 62.1, 66.7]) / 255.0,
+        )
+        train_transform = transforms.Compose(
+            [
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                normalize,
+            ]
+        )
+        valid_transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                normalize,
+            ]
+        )
+        self.cifar100_test = CIFAR100(
+            self.data_dir, train=False, download=True, transform=valid_transform
+        )
+        self.cifar100_train = CIFAR100(
+            self.data_dir, train=True, download=True, transform=train_transform
+        )
+        self.cifar100_val = CIFAR100(
+            self.data_dir, train=True, download=True, transform=valid_transform
+        )
+        num_train = len(self.cifar100_train)
+        indices = list(range(num_train))
+        split = int(np.floor(0.2 * num_train))
+        np.random.shuffle(indices)
+        train_idx, valid_idx = indices[split:], indices[:split]
+        self.train_sampler = SubsetRandomSampler(train_idx)
+        self.valid_sampler = SubsetRandomSampler(valid_idx)
+        num_test = len(self.cifar100_test)
+        predict_idx = torch.randperm(num_test)[: self.num_predict]
+        self.predict_sampler = SubsetRandomSampler(predict_idx)
+
+    def train_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.cifar100_train,
+            batch_size=self.batch_size,
+            sampler=self.train_sampler,
+        )
+
+    def val_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.cifar100_val, batch_size=self.batch_size, sampler=self.valid_sampler
+        )
+
+    def test_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.cifar100_test, batch_size=self.batch_size
+        )
+
+    def predict_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.cifar100_test, batch_size=self.batch_size, sampler=self.predict_sampler
+        )
+
+    def teardown(self, stage: str):
+        ...
+
+    def concept_names(self):
+        return ["Aquatic", "People", "Vehicles"]
+
+    def generate_concept_dataset(self, concept_id: int, concept_set_size: int) -> tuple:
+        train_set = self.cifar100_train
+        classes = train_set.classes
+        concept_to_classes = {
+            "Aquatic": {
+                "beaver",
+                "dolphin",
+                "otter",
+                "seal",
+                "whale",
+                "aquarium_fish",
+                "flatfish",
+                "ray",
+                "shark",
+                "trout",
+            },
+            "People": {"baby", "boy", "girl", "man", "woman"},
+            "Vehicles": {
+                "bicycle",
+                "bus",
+                "motorcycle",
+                "pickup_truck",
+                "train",
+                "lawn_mower",
+                "rocket",
+                "streetcar",
+                "tank",
+                "tractor",
+            },
+        }
+        labels = torch.Tensor(self.cifar100_train.targets)
+        mask = []
+        for label in labels:
+            mask.append(
+                classes[int(label)]
+                in concept_to_classes[self.concept_names()[concept_id]]
+            )
+        mask = torch.BoolTensor(mask)
+        positive_idx = torch.nonzero(mask).flatten()
+        negative_idx = torch.nonzero(~mask).flatten()
+        positive_loader = torch.utils.data.DataLoader(
+            train_set,
+            batch_size=concept_set_size,
+            sampler=SubsetRandomSampler(positive_idx),
+        )
+        negative_loader = torch.utils.data.DataLoader(
+            train_set,
+            batch_size=concept_set_size,
+            sampler=SubsetRandomSampler(negative_idx),
+        )
+        X_pos, C_pos = next(iter(positive_loader))
+        X_neg, C_neg = next(iter(negative_loader))
+        X = torch.concatenate((X_pos, X_neg), 0)
+        C = torch.concatenate(
+            (torch.ones(concept_set_size), torch.zeros(concept_set_size)), 0
+        )
+        rand_perm = torch.randperm(len(X))
+        return X[rand_perm], C[rand_perm]
+
+
+class STL10Dataset(pl.LightningDataModule, ConceptDataset):
+    def __init__(self, data_dir: Path, batch_size: int = 32, num_predict: int = 500):
+        super().__init__()
+        self.data_dir = data_dir
+        self.batch_size = batch_size
+        self.num_predict = num_predict
+
+    def setup(self, stage: str):
+        mean = np.array([0.44508205, 0.43821473, 0.40541945])
+        std = np.array([0.26199411, 0.25827974, 0.27239384])
+        normalize = transforms.Normalize(
+            mean=mean,
+            std=std,
+        )
+        train_transform = transforms.Compose(
+            [
+                transforms.RandomCrop(96, padding=12),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                Cutout(60),
+                normalize,
+            ]
+        )
+        valid_transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                normalize,
+            ]
+        )
+        self.stl10_test = STL10(
+            self.data_dir, split="test", download=True, transform=valid_transform
+        )
+        self.stl10_train = STL10(
+            self.data_dir, split="train", download=True, transform=train_transform
+        )
+        self.stl10_val = STL10(
+            self.data_dir, split="train", download=True, transform=valid_transform
+        )
+        num_train = len(self.stl10_train)
+        indices = list(range(num_train))
+        split = int(np.floor(0.2 * num_train))
+        np.random.shuffle(indices)
+        train_idx, valid_idx = indices[split:], indices[:split]
+        self.train_sampler = SubsetRandomSampler(train_idx)
+        self.valid_sampler = SubsetRandomSampler(valid_idx)
+        num_test = len(self.stl10_test)
+        predict_idx = torch.randperm(num_test)[: self.num_predict]
+        self.predict_sampler = SubsetRandomSampler(predict_idx)
+
+    def train_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.stl10_train,
+            batch_size=self.batch_size,
+            sampler=self.train_sampler,
+        )
+
+    def val_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.stl10_val, batch_size=self.batch_size, sampler=self.valid_sampler
+        )
+
+    def test_dataloader(self):
+        return torch.utils.data.DataLoader(self.stl10_test, batch_size=self.batch_size)
+
+    def predict_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.stl10_test, batch_size=self.batch_size, sampler=self.predict_sampler
+        )
+
+    def teardown(self, stage: str):
+        ...
+
+    def concept_names(self):
+        return ["Wings", "Vehicles"]
+
+    def generate_concept_dataset(self, concept_id: int, concept_set_size: int) -> tuple:
+        train_set = self.stl10_train
+        classes = train_set.classes
+        concept_to_classes = {
+            "Vehicles": {
+                "airplane",
+                "car",
+                "ship",
+                "truck",
+            },
+            "Wings": {
+                "bird",
+                "airplane",
+            },
+        }
+        labels = torch.Tensor(train_set.labels)
+        mask = []
+        for label in labels:
+            mask.append(
+                classes[int(label)]
+                in concept_to_classes[self.concept_names()[concept_id]]
+            )
+        mask = torch.BoolTensor(mask)
+        positive_idx = torch.nonzero(mask).flatten()
+        negative_idx = torch.nonzero(~mask).flatten()
+        positive_loader = torch.utils.data.DataLoader(
+            train_set,
+            batch_size=concept_set_size,
+            sampler=SubsetRandomSampler(positive_idx),
+        )
+        negative_loader = torch.utils.data.DataLoader(
+            train_set,
+            batch_size=concept_set_size,
+            sampler=SubsetRandomSampler(negative_idx),
+        )
+        X_pos, C_pos = next(iter(positive_loader))
+        X_neg, C_neg = next(iter(negative_loader))
+        X = torch.concatenate((X_pos, X_neg), 0)
+        C = torch.concatenate(
+            (torch.ones(concept_set_size), torch.zeros(concept_set_size)), 0
+        )
+        rand_perm = torch.randperm(len(X))
+        return X[rand_perm], C[rand_perm]
+
+
+class Cutout:
+    """Randomly mask out a patch from an image.
+    Args:
+        size (int): The size of the square patch.
+    """
+
+    def __init__(self, size):
+        self.size = size
+
+    def __call__(self, img):
+        """
+        Args:
+            img (Tensor): Tensor image
+        Returns:
+            Tensor: Image with a hole of dimension size x size cut out of it.
+        """
+        h = img.size(1)
+        w = img.size(2)
+
+        mask = np.ones((h, w), np.float32)
+
+        y = np.random.randint(h)
+        x = np.random.randint(w)
+
+        y1 = np.clip(y - self.size // 2, 0, h)
+        y2 = np.clip(y + self.size // 2, 0, h)
+        x1 = np.clip(x - self.size // 2, 0, w)
+        x2 = np.clip(x + self.size // 2, 0, w)
+
+        mask[y1:y2, x1:x2] = 0.0
+
+        mask = torch.from_numpy(mask)
+        mask = mask.expand_as(img)
+        img = img * mask
+
+        return img

@@ -2,6 +2,9 @@ import random
 import torch
 import torch.nn as nn
 from abc import ABC, abstractmethod
+from e2cnn import gspaces
+from e2cnn import nn as e2nn
+from torchvision.transforms.functional import rotate
 from typing import Tuple
 
 
@@ -106,9 +109,9 @@ class SetPermutation(Symmetry):
 
 
 class Translation2D(Symmetry):
-    def __init__(self, max_dispacement: int, h: int = None, w: int = None):
+    def __init__(self, max_displacement: int, h: int = None, w: int = None):
         super().__init__()
-        self.max_displacement = max_dispacement
+        self.max_displacement = max_displacement
         self.h = h
         self.w = w
 
@@ -142,6 +145,35 @@ class Translation2D(Symmetry):
         w, h = displacement
         self.w = w
         self.h = h
+
+
+class Dihedral(Symmetry):
+    def __init__(self, order: int = 4, n_chanels: int = 3):
+        super().__init__()
+        self.gspace = gspaces.FlipRot2dOnR2(N=order)
+        self.n_chanels = n_chanels
+        self.in_type = self.in_type = e2nn.FieldType(
+            self.gspace, [self.gspace.trivial_repr] * self.n_chanels
+        )
+        self.group_element = None
+
+    def forward(self, x):
+        if self.group_element is None:
+            self.sample_symmetry(x)
+        x = x.float()
+        x = e2nn.GeometricTensor(x, self.in_type)
+        x = x.transform(self.group_element)
+        return x.tensor
+
+    def sample_symmetry(self, x):
+        group_element = random.sample(list(self.gspace.testing_elements), 1)[0]
+        self.set_symmetry(group_element)
+
+    def get_all_symmetries(self, x):
+        return list(self.in_type.testing_elements)
+
+    def set_symmetry(self, symmetry_param):
+        self.group_element = symmetry_param
 
 
 class AnchoredTranslation2D(Translation2D):

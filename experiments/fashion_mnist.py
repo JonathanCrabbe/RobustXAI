@@ -132,7 +132,7 @@ def feature_importance(
     save_dir = model_dir / "feature_importance"
     if not save_dir.exists():
         os.makedirs(save_dir)
-    translation = Translation2D(max_dispacement=max_displacement)
+    translation = Translation2D(max_displacement=max_displacement)
     metrics = []
     for model_type in models:
         logging.info(f"Now working with {model_type} classifier")
