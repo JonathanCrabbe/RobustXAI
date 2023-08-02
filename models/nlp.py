@@ -60,3 +60,6 @@ class BOWClassifier(pl.LightningModule):
         loss = F.cross_entropy(pred, y)
         acc = torch.count_nonzero(y == torch.argmax(pred, dim=-1)) / len(y)
         self.log_dict({"validation/loss": loss, "validation/acc": acc}, prog_bar=True)
+
+    def last_layer(self) -> nn.Module:
+        return self.fc3

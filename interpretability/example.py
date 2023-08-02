@@ -1,15 +1,17 @@
 import os
+from abc import ABC, abstractmethod
+from pathlib import Path
+from typing import Any, List, Optional
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from abc import ABC, abstractmethod
-from torch.utils.data import TensorDataset, DataLoader
-from torch_geometric.data import Data as GraphData
-from pathlib import Path
-from utils.misc import direct_sum
-from tqdm import tqdm
-from typing import List, Optional, Any
 from e2cnn.nn import GeometricTensor
+from torch.utils.data import DataLoader, TensorDataset
+from torch_geometric.data import Data as GraphData
+from tqdm import tqdm
+
+from utils.misc import direct_sum
 
 
 class ExampleBasedExplainer(nn.Module, ABC):

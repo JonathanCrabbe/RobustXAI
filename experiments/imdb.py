@@ -7,11 +7,7 @@ import pandas as pd
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-from captum.attr import (
-    DeepLift,
-    GradientShap,
-    IntegratedGradients,
-)
+from captum.attr import DeepLift, GradientShap, IntegratedGradients
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers import WandbLogger
 from torch.utils.data import DataLoader, RandomSampler
@@ -150,7 +146,7 @@ def example_importance(
         train_set, replacement=True, num_samples=recursion_depth * batch_size
     )
     train_loader_replacement = DataLoader(train_set, batch_size, sampler=train_sampler)
-    test_loader = datamodule.predict_dataloader()
+    test_loader = datamodule.test_dataloader()
     model = BOWClassifier.load_from_checkpoint(model_dir / "last.ckpt")
     attr_methods = {
         "Representation Similarity": RepresentationSimilarity,
@@ -167,7 +163,7 @@ def example_importance(
     model_layers = {"Embedding": model.fc2}
     for attr_name in attr_methods:
         logging.info(f"Now working with {attr_name} explainer")
-        model = BOWClassifier.load_from_checkpoint(model_dir / "last.ckpt")
+        model.load_state_dict(torch.load(model_dir / "last.ckpt")["state_dict"])
         if attr_name in {"TracIn", "Influence Functions"}:
             ex_importance = attr_methods[attr_name](
                 model,
@@ -252,6 +248,13 @@ def main(
     match name:
         case "feature_importance":
             feature_importance(
+                random_seed=seed,
+                batch_size=batch_size,
+                model_name=model_name,
+                plot=plot,
+            )
+        case "example_importance":
+            example_importance(
                 random_seed=seed,
                 batch_size=batch_size,
                 model_name=model_name,

@@ -1,14 +1,16 @@
+from random import shuffle
+
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import pytorch_lightning as pl
-from tqdm import tqdm
-from torch.utils.data import DataLoader
-from utils.symmetries import Symmetry, AnchoredTranslation2D, Translation2D
-from random import shuffle
-from captum.metrics import sensitivity_max
 from captum.attr import Attribution, GradientShap, Occlusion, Saliency
+from captum.metrics import sensitivity_max
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
 from interpretability.feature import FeatureImportance
+from utils.symmetries import AnchoredTranslation2D, Symmetry, Translation2D
 
 
 def l1_distance(
