@@ -1,22 +1,30 @@
-import os
 import logging
-import torch
-import pandas as pd
-import numpy as np
-import networkx as nx
+import os
 import random
-import h5py
-import pytorch_lightning as pl
-from torchvision.transforms import transforms
-from pathlib import Path
-from torch.utils.data import Dataset, SubsetRandomSampler
-from torchvision.datasets import FashionMNIST, CIFAR100, STL10
-from imblearn.over_sampling import SMOTE
+import re
 from abc import ABC, abstractmethod
-from torch_geometric.datasets import TUDataset
-from utils.misc import to_molecule
+from collections import Counter
+from functools import partial
+from pathlib import Path
+
+import h5py
+import networkx as nx
+import nltk
+import numpy as np
+import pandas as pd
+import pytorch_lightning as pl
+import torch
+import torch.nn.functional as F
+from imblearn.over_sampling import SMOTE
 from joblib import Parallel, delayed
+from torch.utils.data import Dataset, SubsetRandomSampler
+from torch.utils.data.dataset import random_split
+from torch_geometric.datasets import TUDataset
+from torchvision.datasets import CIFAR100, STL10, FashionMNIST
+from torchvision.transforms import transforms
 from tqdm import tqdm
+
+from utils.misc import to_molecule
 
 
 class ConceptDataset(ABC, Dataset):
@@ -903,6 +911,174 @@ class STL10Dataset(pl.LightningDataModule, ConceptDataset):
         )
         rand_perm = torch.randperm(len(X))
         return X[rand_perm], C[rand_perm]
+
+
+class IMDBDataset(pl.LightningDataModule, Dataset):
+    """This class implements a lightning wrapper around the IMDB dataset that downloads and process the raw data.
+    This script borrows from https://colab.research.google.com/github/scoutbee/pytorch-nlp-notebooks/blob/master/1_BoW_text_classification.ipynb#scrollTo=n06g-zwTQR8g
+
+    """
+
+    def __init__(
+        self,
+        data_dir: Path,
+        batch_size: int = 32,
+        max_vocab: int = 1000,
+        max_len: int = 128,
+    ):
+        super().__init__()
+        self.data_dir = data_dir
+        self.batch_size = batch_size
+        self.max_vocab = max_vocab
+        self.max_len = max_len
+
+        # Download nltk prerequisites and define utility functions
+        nltk.download("stopwords")
+        nltk.download("wordnet")
+        from nltk.corpus import stopwords
+        from nltk.stem import WordNetLemmatizer
+        from nltk.tokenize import wordpunct_tokenize
+
+        def tokenize(text, stop_words, lemmatizer):
+            text = re.sub(r"[^\w\s]", "", text)  # remove special characters
+            text = text.lower()  # lowercase
+            tokens = wordpunct_tokenize(text)  # tokenize
+            tokens = [
+                lemmatizer.lemmatize(token) for token in tokens
+            ]  # noun lemmatizer
+            tokens = [
+                lemmatizer.lemmatize(token, "v") for token in tokens
+            ]  # verb lemmatizer
+            tokens = [
+                token for token in tokens if token not in stop_words
+            ]  # remove stopwords
+            return tokens
+
+        def remove_rare_words(tokens, common_tokens, max_len):
+            return [token if token in common_tokens else "<UNK>" for token in tokens][
+                -max_len:
+            ]
+
+        def replace_numbers(tokens):
+            return [re.sub(r"[0-9]+", "<NUM>", token) for token in tokens]
+
+        # If necessary, download IMDB dataset
+        data_path = self.data_dir / "IMDB Dataset.csv"
+        if not data_path.is_file():
+            self.download()
+        df = pd.read_csv(data_path)
+
+        # Clean and tokenize
+        stop_words = set(stopwords.words("english"))
+        lemmatizer = WordNetLemmatizer()
+        df["tokens"] = df.review.apply(
+            partial(
+                tokenize,
+                stop_words=stop_words,
+                lemmatizer=lemmatizer,
+            ),
+        )
+
+        all_tokens = [token for doc in list(df.tokens) for token in doc]
+
+        # Build most common tokens bound by max vocab size
+        common_tokens = set(
+            list(zip(*Counter(all_tokens).most_common(self.max_vocab)))[0]
+        )
+
+        # Replace rare words with <UNK>
+        df.loc[:, "tokens"] = df.tokens.apply(
+            partial(
+                remove_rare_words,
+                common_tokens=common_tokens,
+                max_len=self.max_len,
+            ),
+        )
+
+        # Replace numbers with <NUM>
+        df.loc[:, "tokens"] = df.tokens.apply(replace_numbers)
+
+        # Remove sequences with only <UNK>
+        df = df[
+            df.tokens.apply(
+                lambda tokens: any(token != "<UNK>" for token in tokens),
+            )
+        ]
+
+        # Build vocab
+        vocab = sorted(set(token for doc in list(df.tokens) for token in doc))
+        self.token2idx = {token: idx for idx, token in enumerate(vocab)}
+        self.idx2token = {idx: token for token, idx in self.token2idx.items()}
+
+        # Convert tokens to indices
+        df["indexed_tokens"] = df.tokens.apply(
+            lambda doc: [self.token2idx[token] for token in doc],
+        )
+
+        # Stack the input sequences and labels
+        self.Y = torch.tensor(
+            [int(label == "positive") for label in df.sentiment], dtype=torch.long
+        )
+        self.X = [torch.tensor(sequence) for sequence in df.indexed_tokens]
+
+        # Perform a train-validation-test split
+        validation_size = int(0.05 * len(self))
+        test_size = validation_size
+        train_size = len(self) - validation_size - test_size
+        self.train_set, self.validation_set, self.test_set = random_split(
+            self, [train_size, validation_size, test_size]
+        )
+
+    def setup(self, stage: str):
+        ...
+
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
+        # Get the desired entries from the dataset
+        y = self.Y[index]
+        x = self.X[index]
+
+        # One-hot encode each sequence and pad them to have sequences of equal size
+        x = F.one_hot(x, num_classes=len(self.idx2token))
+        sequence_length, vocab_size = x.size()
+        padding_size = self.max_len - sequence_length
+        x = torch.cat([x, torch.zeros((padding_size, vocab_size))]).float()
+
+        return x, y
+
+    def __len__(self) -> int:
+        return len(self.Y)
+
+    def train_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.train_set, batch_size=self.batch_size, shuffle=True
+        )
+
+    def val_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.validation_set, batch_size=self.batch_size, shuffle=True
+        )
+
+    def test_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.test_set, batch_size=self.batch_size, shuffle=True
+        )
+
+    def predict_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.test_set, batch_size=self.batch_size, shuffle=True
+        )
+
+    def download(self) -> None:
+        import kaggle
+
+        logging.info(f"Downloading IMDB dataset in {self.data_dir}")
+        kaggle.api.authenticate()
+        kaggle.api.dataset_download_files(
+            "lakshmi25npathi/imdb-dataset-of-50k-movie-reviews",
+            path=self.data_dir,
+            unzip=True,
+        )
+        logging.info(f"IMDB dataset downloaded in {self.data_dir}")
 
 
 class Cutout:

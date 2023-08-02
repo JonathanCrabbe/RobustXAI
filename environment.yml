@@ -36,4 +36,5 @@ dependencies:
     - pytorch-lightning==2.0.2
     - e2cnn==0.2.3
     - wandb==0.15.0
+    - nltk==3.8.1
 

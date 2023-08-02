@@ -165,4 +165,5 @@ datasets/mnet/
 datasets/fashion_mnist/
 datasets/cifar100/
 datasets/stl10/
+datasets/imdb/
 results/
