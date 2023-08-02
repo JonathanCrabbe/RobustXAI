@@ -18,6 +18,7 @@ class BOWClassifier(pl.LightningModule):
         self.fc1 = nn.Linear(vocab_size, hidden1)
         self.fc2 = nn.Linear(hidden1, hidden2)
         self.fc3 = nn.Linear(hidden2, num_labels)
+        self.save_hyperparameters()
 
     def forward(self, x: torch.Tensor):
         # Compute bow
