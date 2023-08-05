@@ -20,7 +20,7 @@ from joblib import Parallel, delayed
 from torch.utils.data import Dataset, SubsetRandomSampler
 from torch.utils.data.dataset import random_split
 from torch_geometric.datasets import TUDataset
-from torchvision.datasets import CIFAR100, STL10, FashionMNIST
+from torchvision.datasets import CIFAR100, STL10, FashionMNIST, ImageFolder
 from torchvision.transforms import transforms
 from tqdm import tqdm
 
@@ -1079,6 +1079,54 @@ class IMDBDataset(pl.LightningDataModule, Dataset):
             unzip=True,
         )
         logging.info(f"IMDB dataset downloaded in {self.data_dir}")
+
+
+class CINIC10Dataset(pl.LightningDataModule):
+    def __init__(self, data_dir: Path, batch_size: int = 32, num_predict: int = 500):
+        super().__init__()
+        self.data_dir = data_dir
+        self.batch_size = batch_size
+        self.num_predict = num_predict
+        if not (data_dir / "test").exists():
+            self.download()
+
+    def setup(self, stage: str):
+        mean = np.array([0.44508205, 0.43821473, 0.40541945])
+        std = np.array([0.26199411, 0.25827974, 0.27239384])
+        normalize = transforms.Normalize(
+            mean=mean,
+            std=std,
+        )
+        transform = transforms.Compose(
+            [
+                transforms.ToTensor(),
+                transforms.Resize(96),
+                normalize,
+            ]
+        )
+        self.test_set = ImageFolder(root=self.data_dir / "test", transform=transform)
+        predict_idx = torch.randperm(len(self.test_set))[: self.num_predict]
+        self.predict_sampler = SubsetRandomSampler(predict_idx)
+
+    def test_dataloader(self):
+        return torch.utils.data.DataLoader(self.test_set, batch_size=self.batch_size)
+
+    def predict_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.test_set, batch_size=self.batch_size, sampler=self.predict_sampler
+        )
+
+    def download(self) -> None:
+        import kaggle
+
+        logging.info(f"Downloading CINIC10 dataset in {self.data_dir}")
+        kaggle.api.authenticate()
+        kaggle.api.dataset_download_files(
+            "mengcius/cinic10",
+            path=self.data_dir,
+            unzip=True,
+        )
+        logging.info(f"CINIC10 dataset downloaded in {self.data_dir}")
 
 
 class Cutout:

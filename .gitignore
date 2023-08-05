@@ -166,4 +166,5 @@ datasets/fashion_mnist/
 datasets/cifar100/
 datasets/stl10/
 datasets/imdb/
+datasets/cinic10/
 results/

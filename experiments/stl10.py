@@ -1,42 +1,39 @@
-import pytorch_lightning as pl
 import argparse
-import torch
-import torch.nn as nn
+import itertools
 import logging
 import os
-import itertools
 import warnings
-import pandas as pd
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
-from models.images import Wide_ResNet
-from datasets.loaders import STL10Dataset
 from pathlib import Path
-from utils.misc import set_random_seed
-from utils.symmetries import Dihedral
-from captum.attr import (
-    DeepLift,
-    IntegratedGradients,
-    GradientShap,
+
+import pandas as pd
+import pytorch_lightning as pl
+import torch
+import torch.nn as nn
+from captum.attr import DeepLift, GradientShap, IntegratedGradients
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
+from torch.utils.data import DataLoader, RandomSampler
+
+from datasets.loaders import CINIC10Dataset, STL10Dataset
+from interpretability.concept import CAR, CAV
+from interpretability.example import (
+    InfluenceFunctions,
+    RepresentationSimilarity,
+    SimplEx,
+    TracIn,
 )
 from interpretability.feature import FeatureImportance
-from interpretability.example import (
-    TracIn,
-    InfluenceFunctions,
-    SimplEx,
-    RepresentationSimilarity,
-)
-from interpretability.concept import CAV, CAR
 from interpretability.robustness import (
-    model_invariance_exact,
-    explanation_equivariance_exact,
-    explanation_invariance_exact,
     ComputeModelInvariance,
     ComputeSaliencyEquivariance,
     accuracy,
+    explanation_equivariance_exact,
+    explanation_invariance_exact,
+    model_invariance_exact,
 )
+from models.images import Wide_ResNet
+from utils.misc import get_all_checkpoint_paths, get_best_checkpoint, set_random_seed
 from utils.plots import single_robustness_plots
-from utils.misc import get_best_checkpoint, get_all_checkpoint_paths
-from torch.utils.data import DataLoader, RandomSampler
+from utils.symmetries import Dihedral
 
 
 def train_stl10_model(
@@ -97,12 +94,17 @@ def feature_importance(
     data_dir: Path = Path.cwd() / "datasets/stl10",
     plot: bool = True,
     n_test: int = 500,
+    use_cinic10: bool = False,
 ) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     set_random_seed(random_seed)
     model_dir = model_dir / model_name
-    datamodule = STL10Dataset(
-        data_dir=data_dir, batch_size=batch_size, num_predict=n_test
+    datamodule = (
+        STL10Dataset(data_dir=data_dir, batch_size=batch_size, num_predict=n_test)
+        if not use_cinic10
+        else CINIC10Dataset(
+            data_dir=data_dir, batch_size=batch_size, num_predict=n_test
+        )
     )
     datamodule.setup("predict")
     test_loader = datamodule.predict_dataloader()
@@ -116,7 +118,11 @@ def feature_importance(
         "Integrated Gradients": IntegratedGradients,
         "Gradient Shap": GradientShap,
     }
-    save_dir = model_dir / "feature_importance"
+    save_dir = (
+        model_dir / "feature_importance"
+        if not use_cinic10
+        else model_dir / "cinic10/feature_importance"
+    )
     if not save_dir.exists():
         os.makedirs(save_dir)
     metrics = []
@@ -143,7 +149,9 @@ def feature_importance(
     metrics_df = pd.DataFrame(metrics)
     metrics_df.to_csv(save_dir / "metrics.csv", index=False)
     if plot:
-        single_robustness_plots(save_dir, "stl10", "feature_importance")
+        single_robustness_plots(
+            save_dir, "stl10" if not use_cinic10 else "cinic10", "feature_importance"
+        )
 
 
 def example_importance(
@@ -156,17 +164,32 @@ def example_importance(
     n_test: int = 1000,
     n_train: int = 100,
     recursion_depth: int = 100,
+    use_cinic10: bool = False,
 ) -> None:
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     set_random_seed(random_seed)
     model_dir = model_dir / model_name
-    save_dir = model_dir / "example_importance"
+    save_dir = (
+        model_dir / "example_importance"
+        if not use_cinic10
+        else model_dir / "cinic10/example_importance"
+    )
     if not save_dir.exists():
         os.makedirs(save_dir)
     datamodule = STL10Dataset(
         data_dir=data_dir, batch_size=batch_size, num_predict=n_test
     )
+    datamodule_test = (
+        STL10Dataset(data_dir=data_dir, batch_size=batch_size, num_predict=n_test)
+        if not use_cinic10
+        else CINIC10Dataset(
+            data_dir=data_dir.parent / "cinic10",
+            batch_size=batch_size,
+            num_predict=n_test,
+        )
+    )
     datamodule.setup("predict")
+    datamodule_test.setup("predict")
     train_set = datamodule.stl10_train
     train_loader = DataLoader(train_set, n_train, shuffle=True)
     X_train, Y_train = next(iter(train_loader))
@@ -175,7 +198,7 @@ def example_importance(
         train_set, replacement=True, num_samples=recursion_depth * batch_size
     )
     train_loader_replacement = DataLoader(train_set, batch_size, sampler=train_sampler)
-    test_loader = datamodule.predict_dataloader()
+    test_loader = datamodule_test.predict_dataloader()
     checkpoint = torch.load(get_best_checkpoint(model_dir))
     model = Wide_ResNet(16, 8, initial_stride=2, num_classes=10)
     model.load_state_dict(checkpoint["state_dict"], strict=False)
@@ -244,7 +267,9 @@ def example_importance(
     metrics_df = pd.DataFrame(data=metrics)
     metrics_df.to_csv(save_dir / "metrics.csv", index=False)
     if plot:
-        single_robustness_plots(save_dir, "stl10", "example_importance")
+        single_robustness_plots(
+            save_dir, "stl10" if not use_cinic10 else "cinic10", "example_importance"
+        )
 
 
 def concept_importance(
@@ -334,6 +359,7 @@ if __name__ == "__main__":
     parser.add_argument("--name", type=str, default="feature importance")
     parser.add_argument("--n_test", type=int, default=500)
     parser.add_argument("--max_epochs", type=int, default=1000)
+    parser.add_argument("--cinic10", action="store_true")
     args = parser.parse_args()
     model_name = f"stl10_d8_wideresnet_seed{args.seed}"
     with warnings.catch_warnings():
@@ -349,12 +375,18 @@ if __name__ == "__main__":
             )
         match args.name:
             case "feature_importance":
+                data_dir = Path.cwd() / "datasets"
+                data_dir = (
+                    data_dir / "stl10" if not args.cinic10 else data_dir / "cinic10"
+                )
                 feature_importance(
                     random_seed=args.seed,
                     batch_size=args.batch_size,
                     model_name=model_name,
                     plot=args.plot,
                     n_test=args.n_test,
+                    use_cinic10=args.cinic10,
+                    data_dir=data_dir,
                 )
             case "example_importance":
                 example_importance(
@@ -363,6 +395,7 @@ if __name__ == "__main__":
                     model_name=model_name,
                     plot=args.plot,
                     n_test=args.n_test,
+                    use_cinic10=args.cinic10,
                 )
             case "concept_importance":
                 concept_importance(
