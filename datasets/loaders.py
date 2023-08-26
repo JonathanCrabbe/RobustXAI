@@ -913,7 +913,7 @@ class STL10Dataset(pl.LightningDataModule, ConceptDataset):
         return X[rand_perm], C[rand_perm]
 
 
-class IMDBDataset(pl.LightningDataModule, Dataset):
+class IMDBDataset(pl.LightningDataModule, ConceptDataset, Dataset):
     """This class implements a lightning wrapper around the IMDB dataset that downloads and process the raw data.
     This script borrows from https://colab.research.google.com/github/scoutbee/pytorch-nlp-notebooks/blob/master/1_BoW_text_classification.ipynb#scrollTo=n06g-zwTQR8g
 
@@ -1015,6 +1015,9 @@ class IMDBDataset(pl.LightningDataModule, Dataset):
             lambda doc: [self.token2idx[token] for token in doc],
         )
 
+        # Save dataframe for latter usage
+        self.df = df
+
         # Stack the input sequences and labels
         self.Y = torch.tensor(
             [int(label == "positive") for label in df.sentiment], dtype=torch.long
@@ -1079,6 +1082,42 @@ class IMDBDataset(pl.LightningDataModule, Dataset):
             unzip=True,
         )
         logging.info(f"IMDB dataset downloaded in {self.data_dir}")
+
+    def concept_names(self):
+        return ["good", "bad", "excellent", "terrible"]
+
+    def generate_concept_dataset(self, concept_id: int, concept_set_size: int) -> tuple:
+        # For each training review, check if the concept (as a word) appears in the review
+        concept_word = self.concept_names()[concept_id]
+        positive_idx: list[int] = []
+        negative_idx: list[int] = []
+        for idx in range(len(self.train_set)):
+            if concept_word in self.df.iloc[idx].get("review"):
+                positive_idx.append(idx)
+            else:
+                negative_idx.append(idx)
+
+        # Sample concept positives and negatives
+        positive_loader = torch.utils.data.DataLoader(
+            self.train_set,
+            batch_size=concept_set_size,
+            sampler=SubsetRandomSampler(positive_idx),
+        )
+        negative_loader = torch.utils.data.DataLoader(
+            self.train_set,
+            batch_size=concept_set_size,
+            sampler=SubsetRandomSampler(negative_idx),
+        )
+        X_pos, C_pos = next(iter(positive_loader))
+        X_neg, C_neg = next(iter(negative_loader))
+
+        # Concatenate the positives and negatives into a unified concept set
+        X = torch.concatenate((X_pos, X_neg), 0)
+        C = torch.concatenate(
+            (torch.ones(concept_set_size), torch.zeros(concept_set_size)), 0
+        )
+        rand_perm = torch.randperm(len(X))
+        return X[rand_perm], C[rand_perm]
 
 
 class CINIC10Dataset(pl.LightningDataModule):

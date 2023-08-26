@@ -1,16 +1,16 @@
-import json
-import matplotlib
-import pandas as pd
-import seaborn as sns
-import matplotlib.pyplot as plt
-import textwrap
-import logging
 import argparse
-import networkx as nx
-import numpy as np
 import itertools
+import json
+import logging
+import textwrap
 from pathlib import Path
 
+import matplotlib
+import matplotlib.pyplot as plt
+import networkx as nx
+import numpy as np
+import pandas as pd
+import seaborn as sns
 
 sns.set_style("whitegrid")
 sns.set_palette("colorblind")
@@ -28,7 +28,6 @@ markers = {
     "CAR-Lin1": "<",
     "CAV-Lin1": "d",
 }
-# markers = ["o", "s", "X", "D", "v", "p"]
 
 
 def single_robustness_plots(plot_dir: Path, dataset: str, experiment_name: str) -> None:
@@ -52,7 +51,7 @@ def single_robustness_plots(plot_dir: Path, dataset: str, experiment_name: str) 
 
 
 def global_robustness_plots(experiment_name: str) -> None:
-    sns.set(font_scale=1.0)
+    sns.set(font_scale=0.9)
     sns.set_style("whitegrid")
     sns.set_palette("colorblind")
     with open(Path.cwd() / "results_dir.json") as f:
@@ -90,6 +89,10 @@ def global_robustness_plots(experiment_name: str) -> None:
         "CAV-Layer3": "CAV-Inv",
         "SimplEx-Layer3": "SimplEx-Inv",
         "Representation Similarity-Layer3": "Rep. Similar-Inv",
+        "CAR-Embedding": "CAR-Inv",
+        "CAV-Embedding": "CAV-Inv",
+        "SimplEx-Embedding": "SimplEx-Inv",
+        "Representation Similarity-Embedding": "Rep. Similar-Inv",
     }
     global_df = global_df.replace(rename_dic)
     global_df = global_df[
@@ -97,6 +100,7 @@ def global_robustness_plots(experiment_name: str) -> None:
         | (global_df["Model Type"] == "GNN")
         | (global_df["Model Type"] == "Deep-Set")
         | (global_df["Model Type"] == "D8-Wide-ResNet")
+        | (global_df["Model Type"] == "bow_classifier")
     ]
     y = (
         "Explanation Equivariance"
