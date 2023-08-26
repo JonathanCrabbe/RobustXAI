@@ -180,7 +180,23 @@ The `experiment_name` parameter can take the following values:
 
 The resulting plots and data are saved [here](results/stl10).
 
-## 3.G. Failure Modes
+## 3.G. IMDb Dataset
+One can run our experiments with the script
+```shell
+python -m experiments.imdb --name experiment_name --train --plot
+```
+where the `--train` option should only be used one time to fit a model for all the experiments. If you have [WandB](https://wandb.ai/site) set-up, you can also use the `--use_wandb` option to log the results to your WandB account.
+The `experiment_name` parameter can take the following values:
+
+| experiment_name          | description                                                     |
+|--------------------------|-----------------------------------------------------------------|
+| feature_importance         | Feature importance equivariance Section 3.3     |
+| example_importance | Example importance invariance Section 3.3 |
+| concept_importance      | Concept-based invariance Section 3.3   |
+
+The resulting plots and data are saved [here](results/imdb).
+
+## 3.H. Failure Modes
 To visualize failure modes of various interpretability methods, one can use the Jupyter notebook [here](explanations_fail.ipynb). Note that this assumes that models have been trained for the FashionMNIST and the STL10 datasets. All the parameters from this notebook can be adapted to explore more failure modes.
 
 # 4. Citing
