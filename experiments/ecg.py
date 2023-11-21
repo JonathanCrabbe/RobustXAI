@@ -40,7 +40,7 @@ from captum.attr import (
     FeaturePermutation,
     FeatureAblation,
     Occlusion,
-    DeepLift
+    DeepLift,
 )
 
 

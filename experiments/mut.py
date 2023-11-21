@@ -71,7 +71,6 @@ def feature_importance(
     data_dir: Path = Path.cwd() / "datasets/mut",
     N_samp: int = 1,
 ) -> None:
-
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     set_random_seed(random_seed)
     test_set = MutagenicityDataset(data_dir, train=False, random_seed=random_seed)

@@ -69,7 +69,6 @@ def feature_importance(
     n_test: int = 1000,
     N_samp: int = 50,
 ) -> None:
-
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
     set_random_seed(random_seed)
     test_set = ModelNet40Dataset(data_dir, train=False, random_seed=random_seed)
