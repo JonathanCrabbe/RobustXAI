@@ -1,12 +1,13 @@
-import torch
-import random
-import numpy as np
 import logging
+import random
+from pathlib import Path
+from typing import List
+
+import numpy as np
+import torch
 from networkx import Graph
 from torch_geometric.data import Data as GraphData
 from torch_geometric.utils import to_networkx
-from typing import List
-from pathlib import Path
 
 
 def set_random_seed(seed: int) -> None:

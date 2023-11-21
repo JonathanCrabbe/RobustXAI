@@ -1,47 +1,32 @@
+import argparse
+import itertools
+import logging
+import os
+from pathlib import Path
+
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
-import os
-import logging
-import argparse
-import pandas as pd
-import itertools
-from pathlib import Path
+from captum.attr import (DeepLift, FeatureAblation, FeaturePermutation,
+                         GradientShap, IntegratedGradients, Occlusion)
 from torch.utils.data import DataLoader, RandomSampler, Subset
+
 from datasets.loaders import ECGDataset
-from models.time_series import AllCNN, StandardCNN
-from utils.symmetries import Translation1D
-from utils.misc import set_random_seed
-from utils.plots import (
-    single_robustness_plots,
-    relaxing_invariance_plots,
-    enforce_invariance_plot,
-    sensitivity_plot,
-)
-from interpretability.robustness import (
-    accuracy,
-    InvariantExplainer,
-    model_invariance_exact,
-    explanation_invariance_exact,
-    explanation_equivariance_exact,
-    sensitivity,
-)
-from interpretability.example import (
-    SimplEx,
-    RepresentationSimilarity,
-    TracIn,
-    InfluenceFunctions,
-)
-from interpretability.feature import FeatureImportance
 from interpretability.concept import CAR, CAV, ConceptExplainer
-from captum.attr import (
-    IntegratedGradients,
-    GradientShap,
-    FeaturePermutation,
-    FeatureAblation,
-    Occlusion,
-    DeepLift,
-)
+from interpretability.example import (InfluenceFunctions,
+                                      RepresentationSimilarity, SimplEx,
+                                      TracIn)
+from interpretability.feature import FeatureImportance
+from interpretability.robustness import (InvariantExplainer, accuracy,
+                                         explanation_equivariance_exact,
+                                         explanation_invariance_exact,
+                                         model_invariance_exact, sensitivity)
+from models.time_series import AllCNN, StandardCNN
+from utils.misc import set_random_seed
+from utils.plots import (enforce_invariance_plot, relaxing_invariance_plots,
+                         sensitivity_plot, single_robustness_plots)
+from utils.symmetries import Translation1D
 
 
 def train_ecg_model(
@@ -49,7 +34,7 @@ def train_ecg_model(
     latent_dim: int,
     batch_size: int,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/ecg/",
+    model_dir: Path = Path.cwd() / "results/ecg/",
     data_dir: Path = Path.cwd() / "datasets/ecg",
 ) -> None:
     logging.info("Fitting the ECG classifiers")
@@ -95,7 +80,7 @@ def feature_importance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/ecg/",
+    model_dir: Path = Path.cwd() / "results/ecg/",
     data_dir: Path = Path.cwd() / "datasets/ecg",
     n_test: int = 1000,
 ) -> None:
@@ -163,7 +148,7 @@ def example_importance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/ecg/",
+    model_dir: Path = Path.cwd() / "results/ecg/",
     data_dir: Path = Path.cwd() / "datasets/ecg",
     n_test: int = 1000,
     n_train: int = 100,
@@ -275,7 +260,7 @@ def concept_importance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/ecg/",
+    model_dir: Path = Path.cwd() / "results/ecg/",
     data_dir: Path = Path.cwd() / "datasets/ecg",
     n_test: int = 1000,
     concept_set_size: int = 100,
@@ -361,7 +346,7 @@ def enforce_invariance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/ecg/",
+    model_dir: Path = Path.cwd() / "results/ecg/",
     data_dir: Path = Path.cwd() / "datasets/ecg",
     n_test: int = 1000,
     concept_set_size: int = 100,
@@ -432,7 +417,7 @@ def sensitivity_comparison(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/ecg/",
+    model_dir: Path = Path.cwd() / "results/ecg/",
     data_dir: Path = Path.cwd() / "datasets/ecg",
     n_test: int = 1000,
 ) -> None:

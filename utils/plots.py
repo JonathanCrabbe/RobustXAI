@@ -8,7 +8,6 @@ from pathlib import Path
 import matplotlib
 import matplotlib.pyplot as plt
 import networkx as nx
-import numpy as np
 import pandas as pd
 import seaborn as sns
 
@@ -221,12 +220,12 @@ def mc_convergence_plot(plot_dir: Path, dataset: str, experiment_name: str) -> N
 
 def understanding_randomness_plots(plot_dir: Path, dataset: str) -> None:
     data_df = pd.read_csv(plot_dir / "data.csv")
-    sub_df = data_df[data_df["Baseline"] == False]
+    sub_df = data_df[data_df["Baseline"] is False]
     print(sub_df)
     sns.kdeplot(data=data_df, x="y1", y="y2", hue="Model Type", fill=True)
     for model_type in data_df["Model Type"].unique():
         baseline = data_df[
-            (data_df["Model Type"] == model_type) & (data_df["Baseline"] == True)
+            (data_df["Model Type"] == model_type) & (data_df["Baseline"] is True)
         ]
         plt.plot(
             baseline["y1"],
@@ -442,9 +441,7 @@ def global_relax_invariance() -> None:
     )
     # fig.tight_layout()
 
-    plt.savefig(
-        Path.cwd() / f"results/global_relax_invariance.pdf", bbox_inches="tight"
-    )
+    plt.savefig(Path.cwd() / "results/global_relax_invariance.pdf", bbox_inches="tight")
     plt.close()
 
 

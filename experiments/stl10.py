@@ -15,23 +15,18 @@ from torch.utils.data import DataLoader, RandomSampler
 
 from datasets.loaders import CINIC10Dataset, STL10Dataset
 from interpretability.concept import CAR, CAV
-from interpretability.example import (
-    InfluenceFunctions,
-    RepresentationSimilarity,
-    SimplEx,
-    TracIn,
-)
+from interpretability.example import (InfluenceFunctions,
+                                      RepresentationSimilarity, SimplEx,
+                                      TracIn)
 from interpretability.feature import FeatureImportance
-from interpretability.robustness import (
-    ComputeModelInvariance,
-    ComputeSaliencyEquivariance,
-    accuracy,
-    explanation_equivariance_exact,
-    explanation_invariance_exact,
-    model_invariance_exact,
-)
+from interpretability.robustness import (ComputeModelInvariance,
+                                         ComputeSaliencyEquivariance, accuracy,
+                                         explanation_equivariance_exact,
+                                         explanation_invariance_exact,
+                                         model_invariance_exact)
 from models.images import Wide_ResNet
-from utils.misc import get_all_checkpoint_paths, get_best_checkpoint, set_random_seed
+from utils.misc import (get_all_checkpoint_paths, get_best_checkpoint,
+                        set_random_seed)
 from utils.plots import single_robustness_plots
 from utils.symmetries import Dihedral
 
@@ -40,7 +35,7 @@ def train_stl10_model(
     random_seed: int,
     batch_size: int,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/stl10/",
+    model_dir: Path = Path.cwd() / "results/stl10/",
     data_dir: Path = Path.cwd() / "datasets/stl10",
     use_wandb: bool = False,
     max_epochs: int = 200,
@@ -90,7 +85,7 @@ def feature_importance(
     random_seed: int,
     batch_size: int,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/stl10/",
+    model_dir: Path = Path.cwd() / "results/stl10/",
     data_dir: Path = Path.cwd() / "datasets/stl10",
     plot: bool = True,
     n_test: int = 500,
@@ -159,7 +154,7 @@ def example_importance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/stl10/",
+    model_dir: Path = Path.cwd() / "results/stl10/",
     data_dir: Path = Path.cwd() / "datasets/stl10",
     n_test: int = 1000,
     n_train: int = 100,
@@ -277,7 +272,7 @@ def concept_importance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/stl10/",
+    model_dir: Path = Path.cwd() / "results/stl10/",
     data_dir: Path = Path.cwd() / "datasets/stl10",
     n_test: int = 500,
     concept_set_size: int = 100,

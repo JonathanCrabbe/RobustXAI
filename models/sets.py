@@ -1,12 +1,13 @@
+import json
+import logging
+import pathlib
+
 import numpy as np
 import torch
 import torch.nn as nn
-import pathlib
-import logging
-import json
 from tqdm import tqdm
-from utils.metrics import AverageMeter
 
+from utils.metrics import AverageMeter
 
 """
 The models in this file are adapted from https://github.com/manzilzaheer/DeepSets
@@ -177,7 +178,7 @@ class ClassifierModelNet40(nn.Module):
                 self.checkpoints_files.append(str(path_to_checkpoint))
                 torch.save(self.state_dict(), path_to_checkpoint)
             if waiting_epoch == patience:
-                logging.info(f"Early stopping activated")
+                logging.info("Early stopping activated")
                 break
 
     def save(self, directory: pathlib.Path) -> None:

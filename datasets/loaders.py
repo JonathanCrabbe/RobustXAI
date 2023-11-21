@@ -337,7 +337,9 @@ class ModelNet40Dataset(ConceptDataset):
                 # barycentric coordinates on a triangle
                 # https://mathworld.wolfram.com/BarycentricCoordinates.html
                 s, t = sorted([random.random(), random.random()])
-                f = lambda i: s * pt1[i] + (t - s) * pt2[i] + (1 - t) * pt3[i]
+                f = (
+                    lambda i: s * pt1[i] + (t - s) * pt2[i] + (1 - t) * pt3[i]
+                )  # noqa: E731
                 return (f(0), f(1), f(2))
 
             def __call__(self, mesh):
@@ -365,8 +367,6 @@ class ModelNet40Dataset(ConceptDataset):
 
                 return sampled_points
 
-        pointcloud = PointSampler(10000)((verts, faces))
-
         def process(file, file_adr, save_adr):
             fname = save_adr / f"{file[:-4]}.npy"
             if file_adr.suffix == ".off":
@@ -378,18 +378,12 @@ class ModelNet40Dataset(ConceptDataset):
                 else:
                     pass
 
-        tr_label = []
-        tr_cloud = []
-        test_cloud = []
-        test_label = []
-
         folder = "train"
         root_dir = path
         folders = [
             dir for dir in sorted(os.listdir(root_dir)) if os.path.isdir(root_dir / dir)
         ]
         classes = {folder: i for i, folder in enumerate(folders)}
-        files = []
 
         all_files = []
         all_files_adr = []
@@ -399,7 +393,7 @@ class ModelNet40Dataset(ConceptDataset):
             save_adr = self.data_dir / f"ModelNet_40_npy/{category}/{folder}"
             try:
                 os.makedirs(save_adr)
-            except:
+            except BaseException:
                 pass
             new_dir = root_dir / Path(category) / folder
             for file in os.listdir(new_dir):
@@ -421,7 +415,6 @@ class ModelNet40Dataset(ConceptDataset):
             dir for dir in sorted(os.listdir(root_dir)) if os.path.isdir(root_dir / dir)
         ]
         classes = {folder: i for i, folder in enumerate(folders)}
-        files = []
 
         all_files = []
         all_files_adr = []
@@ -431,7 +424,7 @@ class ModelNet40Dataset(ConceptDataset):
             save_adr = self.data_dir / f"ModelNet_40_npy/{category}/{folder}"
             try:
                 os.makedirs(save_adr)
-            except:
+            except BaseException:
                 pass
             new_dir = root_dir / Path(category) / folder
             for file in os.listdir(new_dir):
@@ -469,11 +462,6 @@ class ModelNet40Dataset(ConceptDataset):
             dir for dir in sorted(os.listdir(root_dir)) if os.path.isdir(root_dir / dir)
         ]
         classes = {folder: i for i, folder in enumerate(folders)}
-        files = []
-
-        all_files = []
-        all_files_adr = []
-        all_save_adr = []
 
         for category, num in zip(classes.keys(), classes.values()):
             new_dir = root_dir / Path(category) / folder
@@ -484,7 +472,7 @@ class ModelNet40Dataset(ConceptDataset):
                         point_cloud = np.load(new_dir / file)
                         tr_cloud.append(point_cloud)
                         tr_label.append(num)
-                    except:
+                    except BaseException:
                         pass
         tr_cloud = np.asarray(tr_cloud)
         tr_label = np.asarray(tr_label)
@@ -498,7 +486,6 @@ class ModelNet40Dataset(ConceptDataset):
             dir for dir in sorted(os.listdir(root_dir)) if os.path.isdir(root_dir / dir)
         ]
         classes = {folder: i for i, folder in enumerate(folders)}
-        files = []
 
         for category, num in zip(classes.keys(), classes.values()):
             new_dir = root_dir / Path(category) / folder
@@ -509,7 +496,7 @@ class ModelNet40Dataset(ConceptDataset):
                         point_cloud = np.load(new_dir / file)
                         test_cloud.append(point_cloud)
                         test_label.append(num)
-                    except:
+                    except BaseException:
                         pass
 
         test_cloud = np.asarray(test_cloud)

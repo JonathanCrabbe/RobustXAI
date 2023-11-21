@@ -1,39 +1,31 @@
-import logging
 import argparse
-import torch
-import os
-import torch.nn as nn
-import pandas as pd
 import itertools
-from datasets.loaders import ModelNet40Dataset
-from pathlib import Path
+import logging
+import os
 from math import sqrt
-from utils.misc import set_random_seed
-from models.sets import ClassifierModelNet40
-from torch.utils.data import DataLoader, Subset, RandomSampler
-from captum.attr import (
-    IntegratedGradients,
-    GradientShap,
-    FeatureAblation,
-    FeaturePermutation,
-)
-from utils.symmetries import SetPermutation
+from pathlib import Path
+
+import pandas as pd
+import torch
+import torch.nn as nn
+from captum.attr import (FeatureAblation, FeaturePermutation, GradientShap,
+                         IntegratedGradients)
+from torch.utils.data import DataLoader, RandomSampler, Subset
+
+from datasets.loaders import ModelNet40Dataset
+from interpretability.concept import CAR, CAV
+from interpretability.example import (InfluenceFunctions,
+                                      RepresentationSimilarity, SimplEx,
+                                      TracIn)
 from interpretability.feature import FeatureImportance
-from interpretability.example import (
-    SimplEx,
-    RepresentationSimilarity,
-    InfluenceFunctions,
-    TracIn,
-)
-from interpretability.robustness import (
-    model_invariance,
-    explanation_equivariance,
-    explanation_invariance,
-    accuracy,
-    cos_similarity,
-)
-from interpretability.concept import CAR, CAV, ConceptExplainer
-from utils.plots import single_robustness_plots, mc_convergence_plot
+from interpretability.robustness import (accuracy, cos_similarity,
+                                         explanation_equivariance,
+                                         explanation_invariance,
+                                         model_invariance)
+from models.sets import ClassifierModelNet40
+from utils.misc import set_random_seed
+from utils.plots import mc_convergence_plot, single_robustness_plots
+from utils.symmetries import SetPermutation
 
 
 def train_mnet_model(
@@ -41,7 +33,7 @@ def train_mnet_model(
     latent_dim: int,
     batch_size: int,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/mnet/",
+    model_dir: Path = Path.cwd() / "results/mnet/",
     data_dir: Path = Path.cwd() / "datasets/mnet",
 ) -> None:
     logging.info("Fitting the ModelNet40 classifier")
@@ -64,7 +56,7 @@ def feature_importance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/mnet/",
+    model_dir: Path = Path.cwd() / "results/mnet/",
     data_dir: Path = Path.cwd() / "datasets/mnet",
     n_test: int = 1000,
     N_samp: int = 50,
@@ -128,7 +120,7 @@ def example_importance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/mnet/",
+    model_dir: Path = Path.cwd() / "results/mnet/",
     data_dir: Path = Path.cwd() / "datasets/mnet",
     n_test: int = 1000,
     n_train: int = 100,
@@ -238,7 +230,7 @@ def concept_importance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/mnet/",
+    model_dir: Path = Path.cwd() / "results/mnet/",
     data_dir: Path = Path.cwd() / "datasets/mnet",
     n_test: int = 1000,
     concept_set_size: int = 500,
@@ -323,7 +315,7 @@ def mc_convergence(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/mnet/",
+    model_dir: Path = Path.cwd() / "results/mnet/",
     data_dir: Path = Path.cwd() / "datasets/mnet",
     n_train: int = 100,
     n_test: int = 1000,

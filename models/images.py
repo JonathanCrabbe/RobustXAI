@@ -1,26 +1,22 @@
-import torch
-import torch.nn as nn
+import json
 import logging
 import pathlib
-import json
-import numpy as np
-import torch.nn.functional as F
-import pytorch_lightning as pl
-from utils.symmetries import Translation2D
-from tqdm import tqdm
-from utils.metrics import AverageMeter
-from random import randint
 from abc import ABC, abstractmethod
+from random import randint
 from typing import Tuple
-from utils.gcnn import (
-    conv1x1,
-    conv3x3,
-    conv5x5,
-    FIBERS,
-    init,
-)
-from e2cnn import nn as e2nn
+
+import numpy as np
+import pytorch_lightning as pl
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 from e2cnn import gspaces
+from e2cnn import nn as e2nn
+from tqdm import tqdm
+
+from utils.gcnn import FIBERS, conv1x1, conv3x3, conv5x5, init
+from utils.metrics import AverageMeter
+from utils.symmetries import Translation2D
 
 
 class ClassifierFashionMnist(ABC, nn.Module):
@@ -169,7 +165,7 @@ class ClassifierFashionMnist(ABC, nn.Module):
                 self.checkpoints_files.append(str(path_to_checkpoint))
                 torch.save(self.state_dict(), path_to_checkpoint)
             if waiting_epoch == patience:
-                logging.info(f"Early stopping activated")
+                logging.info("Early stopping activated")
                 break
 
     def save(self, directory: pathlib.Path) -> None:

@@ -1,49 +1,41 @@
-import warnings
-import pytorch_lightning as pl
 import argparse
-import torch
+import itertools
 import logging
 import os
-import itertools
-import pandas as pd
-import torch.nn as nn
-from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint
-from models.images import Wide_ResNet
-from datasets.loaders import Cifar100Dataset
+import warnings
 from pathlib import Path
-from utils.misc import set_random_seed
-from utils.symmetries import Dihedral
-from captum.attr import (
-    DeepLift,
-    IntegratedGradients,
-    GradientShap,
-)
-from interpretability.feature import FeatureImportance
-from interpretability.robustness import (
-    model_invariance_exact,
-    explanation_equivariance_exact,
-    explanation_invariance_exact,
-    ComputeModelInvariance,
-    ComputeSaliencyEquivariance,
-    accuracy,
-)
-from interpretability.example import (
-    TracIn,
-    SimplEx,
-    InfluenceFunctions,
-    RepresentationSimilarity,
-)
-from interpretability.concept import CAR, CAV
-from utils.plots import single_robustness_plots
-from utils.misc import get_best_checkpoint, get_all_checkpoint_paths
+
+import pandas as pd
+import pytorch_lightning as pl
+import torch
+import torch.nn as nn
+from captum.attr import DeepLift, GradientShap, IntegratedGradients
+from pytorch_lightning.callbacks import ModelCheckpoint
 from torch.utils.data import DataLoader, RandomSampler
+
+from datasets.loaders import Cifar100Dataset
+from interpretability.concept import CAR, CAV
+from interpretability.example import (InfluenceFunctions,
+                                      RepresentationSimilarity, SimplEx,
+                                      TracIn)
+from interpretability.feature import FeatureImportance
+from interpretability.robustness import (ComputeModelInvariance,
+                                         ComputeSaliencyEquivariance, accuracy,
+                                         explanation_equivariance_exact,
+                                         explanation_invariance_exact,
+                                         model_invariance_exact)
+from models.images import Wide_ResNet
+from utils.misc import (get_all_checkpoint_paths, get_best_checkpoint,
+                        set_random_seed)
+from utils.plots import single_robustness_plots
+from utils.symmetries import Dihedral
 
 
 def train_cifar100_model(
     random_seed: int,
     batch_size: int,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/cifar100/",
+    model_dir: Path = Path.cwd() / "results/cifar100/",
     data_dir: Path = Path.cwd() / "datasets/cifar100",
     use_wandb: bool = False,
     max_epochs: int = 200,
@@ -94,7 +86,7 @@ def feature_importance(
     random_seed: int,
     batch_size: int,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/cifar100/",
+    model_dir: Path = Path.cwd() / "results/cifar100/",
     data_dir: Path = Path.cwd() / "datasets/cifar100",
     plot: bool = True,
     n_test: int = 500,
@@ -152,7 +144,7 @@ def example_importance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/cifar100/",
+    model_dir: Path = Path.cwd() / "results/cifar100/",
     data_dir: Path = Path.cwd() / "datasets/cifar100",
     n_test: int = 1000,
     n_train: int = 100,
@@ -253,7 +245,7 @@ def concept_importance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/cifar100/",
+    model_dir: Path = Path.cwd() / "results/cifar100/",
     data_dir: Path = Path.cwd() / "datasets/cifar100",
     n_test: int = 500,
     concept_set_size: int = 100,

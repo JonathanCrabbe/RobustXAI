@@ -1,45 +1,31 @@
-import torch
-import os
-import logging
 import argparse
-import pandas as pd
-import torch.nn as nn
 import itertools
-from torch.utils.data import DataLoader
-from models.images import AllCNN, StandardCNN
+import logging
+import os
 from pathlib import Path
+
+import pandas as pd
+import torch
+import torch.nn as nn
+from captum.attr import (DeepLift, FeatureAblation, FeaturePermutation,
+                         GradientShap, IntegratedGradients, Occlusion)
+from torch.utils.data import DataLoader, RandomSampler, Subset
+
 from datasets.loaders import FashionMnistDataset
-from utils.misc import set_random_seed
-from utils.plots import (
-    single_robustness_plots,
-    relaxing_invariance_plots,
-    enforce_invariance_plot,
-)
-from captum.attr import (
-    IntegratedGradients,
-    GradientShap,
-    FeaturePermutation,
-    FeatureAblation,
-    Occlusion,
-    DeepLift,
-)
-from interpretability.example import (
-    SimplEx,
-    InfluenceFunctions,
-    RepresentationSimilarity,
-    TracIn,
-)
 from interpretability.concept import CAR, CAV, ConceptExplainer
-from utils.symmetries import Translation2D, AnchoredTranslation2D
-from interpretability.robustness import (
-    model_invariance_exact,
-    explanation_equivariance_exact,
-    explanation_invariance_exact,
-    accuracy,
-    InvariantExplainer,
-)
+from interpretability.example import (InfluenceFunctions,
+                                      RepresentationSimilarity, SimplEx,
+                                      TracIn)
 from interpretability.feature import FeatureImportance
-from torch.utils.data import Subset, RandomSampler
+from interpretability.robustness import (InvariantExplainer, accuracy,
+                                         explanation_equivariance_exact,
+                                         explanation_invariance_exact,
+                                         model_invariance_exact)
+from models.images import AllCNN, StandardCNN
+from utils.misc import set_random_seed
+from utils.plots import (enforce_invariance_plot, relaxing_invariance_plots,
+                         single_robustness_plots)
+from utils.symmetries import AnchoredTranslation2D, Translation2D
 
 
 def train_fashion_mnist_model(
@@ -47,7 +33,7 @@ def train_fashion_mnist_model(
     latent_dim: int,
     batch_size: int,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/fashion_mnist/",
+    model_dir: Path = Path.cwd() / "results/fashion_mnist/",
     data_dir: Path = Path.cwd() / "datasets/fashion_mnist",
     max_displacement: int = 10,
 ) -> None:
@@ -102,7 +88,7 @@ def feature_importance(
     latent_dim: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/fashion_mnist/",
+    model_dir: Path = Path.cwd() / "results/fashion_mnist/",
     data_dir: Path = Path.cwd() / "datasets/fashion_mnist",
     max_displacement: int = 10,
     n_test: int = 500,
@@ -173,7 +159,7 @@ def example_importance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/fashion_mnist/",
+    model_dir: Path = Path.cwd() / "results/fashion_mnist/",
     data_dir: Path = Path.cwd() / "datasets/fashion_mnist",
     n_test: int = 1000,
     n_train: int = 100,
@@ -290,7 +276,7 @@ def concept_importance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/fashion_mnist/",
+    model_dir: Path = Path.cwd() / "results/fashion_mnist/",
     data_dir: Path = Path.cwd() / "datasets/fashion_mnist",
     n_test: int = 1000,
     concept_set_size: int = 100,
@@ -377,7 +363,7 @@ def enforce_invariance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/fashion_mnist/",
+    model_dir: Path = Path.cwd() / "results/fashion_mnist/",
     data_dir: Path = Path.cwd() / "datasets/fashion_mnist",
     n_test: int = 1000,
     concept_set_size: int = 100,

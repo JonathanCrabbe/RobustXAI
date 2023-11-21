@@ -1,11 +1,11 @@
 import random
+from abc import ABC, abstractmethod
+from typing import Tuple
+
 import torch
 import torch.nn as nn
-from abc import ABC, abstractmethod
 from e2cnn import gspaces
 from e2cnn import nn as e2nn
-from torchvision.transforms.functional import rotate
-from typing import Tuple
 
 
 class Symmetry(nn.Module, ABC):
@@ -67,7 +67,7 @@ class GraphPermutation(Symmetry):
         new_data = data.clone().cpu()
         new_data.x = new_data.x[self.perm, :]
         inv_perm = torch.argsort(self.perm)
-        perm_lambda = lambda x: inv_perm[x]
+        perm_lambda = lambda x: inv_perm[x]  # noqa: E731
         new_data.edge_index.apply_(perm_lambda)
         return new_data.to(data.x.device)
 

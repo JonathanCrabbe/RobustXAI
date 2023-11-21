@@ -1,11 +1,7 @@
-from e2cnn import nn
-from e2cnn import group
-from e2cnn import gspaces
-from e2cnn.nn import init
-
 import math
-import numpy as np
 
+import numpy as np
+from e2cnn import gspaces, nn
 
 CHANNELS_CONSTANT = 1
 

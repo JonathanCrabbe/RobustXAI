@@ -1,12 +1,7 @@
 import torch
 import torch.nn as nn
-from captum.attr import (
-    Attribution,
-    GradientShap,
-    IntegratedGradients,
-    Saliency,
-    Occlusion,
-)
+from captum.attr import (Attribution, GradientShap, IntegratedGradients,
+                         Occlusion, Saliency)
 from torch_geometric.data import Data as GraphData
 
 

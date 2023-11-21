@@ -15,19 +15,13 @@ from torch.utils.data import DataLoader, RandomSampler
 
 from datasets.loaders import IMDBDataset
 from interpretability.concept import CAR, CAV
-from interpretability.example import (
-    InfluenceFunctions,
-    RepresentationSimilarity,
-    SimplEx,
-    TracIn,
-)
+from interpretability.example import (InfluenceFunctions,
+                                      RepresentationSimilarity, SimplEx,
+                                      TracIn)
 from interpretability.feature import FeatureImportance
-from interpretability.robustness import (
-    accuracy,
-    explanation_equivariance,
-    explanation_invariance,
-    model_invariance,
-)
+from interpretability.robustness import (accuracy, explanation_equivariance,
+                                         explanation_invariance,
+                                         model_invariance)
 from models.nlp import BOWClassifier
 from utils.misc import get_all_checkpoint_paths, set_random_seed
 from utils.plots import single_robustness_plots
@@ -39,7 +33,7 @@ def train_model(
     data_dir: Path = Path.cwd() / "datasets/imdb",
     batch_size: int = 256,
     model_name: str = "bow_classifier",
-    model_dir: Path = Path.cwd() / f"results/imdb/",
+    model_dir: Path = Path.cwd() / "results/imdb/",
     use_wandb: bool = True,
     max_epochs: int = 20,
 ):
@@ -76,7 +70,7 @@ def feature_importance(
     random_seed: int,
     batch_size: int,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/imdb/",
+    model_dir: Path = Path.cwd() / "results/imdb/",
     data_dir: Path = Path.cwd() / "datasets/imdb",
     plot: bool = True,
 ) -> None:
@@ -128,7 +122,7 @@ def example_importance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/imdb/",
+    model_dir: Path = Path.cwd() / "results/imdb/",
     data_dir: Path = Path.cwd() / "datasets/imdb",
     n_train: int = 100,
     recursion_depth: int = 100,
@@ -223,7 +217,7 @@ def concept_importance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/imdb/",
+    model_dir: Path = Path.cwd() / "results/imdb/",
     data_dir: Path = Path.cwd() / "datasets/imdb",
     n_test: int = 500,
     concept_set_size: int = 100,
@@ -339,7 +333,7 @@ def main(
                 model_name=model_name,
                 plot=plot,
             )
-        case other:
+        case other:  # noqa: 841
             raise NotImplementedError(f"Unknown experiment name {name}.")
 
 

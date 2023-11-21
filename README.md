@@ -205,7 +205,7 @@ If you use this code, please cite the associated paper:
 
 ```
 @misc{crabbé2023evaluating,
-      title={Evaluating the Robustness of Interpretability Methods through Explanation Invariance and Equivariance}, 
+      title={Evaluating the Robustness of Interpretability Methods through Explanation Invariance and Equivariance},
       author={Jonathan Crabbé and Mihaela van der Schaar},
       year={2023},
       eprint={2304.06715},
@@ -213,4 +213,3 @@ If you use this code, please cite the associated paper:
       primaryClass={cs.LG}
 }
 ```
- 

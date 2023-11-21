@@ -1,18 +1,19 @@
 import abc
+from abc import ABC
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from abc import ABC
-from sklearn.svm import SVC
+from e2cnn.nn import GeometricTensor
 from sklearn.decomposition import PCA
 from sklearn.linear_model import SGDClassifier
-from datasets.loaders import ConceptDataset
+from sklearn.metrics import accuracy_score
+from sklearn.svm import SVC
 from torch_geometric.data import Data as GraphData
 from torch_geometric.loader import DataLoader as GraphDataLoader
-from sklearn.metrics import accuracy_score
-from e2cnn.nn import GeometricTensor
-from typing import Optional
+
+from datasets.loaders import ConceptDataset
 
 
 class ConceptExplainer(ABC, nn.Module):

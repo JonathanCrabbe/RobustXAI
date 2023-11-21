@@ -1,35 +1,31 @@
-import torch
-import os
-import logging
 import argparse
-import pandas as pd
-import torch.nn.functional as F
 import itertools
-from torch_geometric.loader import DataLoader
-from datasets.loaders import MutagenicityDataset
-from models.graphs import ClassifierMutagenicity
+import logging
+import os
 from math import sqrt
 from pathlib import Path
-from utils.misc import set_random_seed
-from utils.plots import single_robustness_plots, mc_convergence_plot
-from captum.attr import IntegratedGradients, GradientShap
-from utils.symmetries import GraphPermutation
-from interpretability.robustness import (
-    graph_model_invariance,
-    graph_explanation_equivariance,
-    graph_explanation_invariance,
-    accuracy,
-    cos_similarity,
-)
-from interpretability.feature import FeatureImportance, GraphFeatureAblation
-from interpretability.example import (
-    GraphRepresentationSimilarity,
-    GraphSimplEx,
-    GraphTracIn,
-    GraphInfluenceFunctions,
-)
+
+import pandas as pd
+import torch
+import torch.nn.functional as F
+from captum.attr import GradientShap, IntegratedGradients
+from torch.utils.data import RandomSampler, Subset
+from torch_geometric.loader import DataLoader
+
+from datasets.loaders import MutagenicityDataset
 from interpretability.concept import GraphCAR, GraphCAV
-from torch.utils.data import Subset, RandomSampler
+from interpretability.example import (GraphInfluenceFunctions,
+                                      GraphRepresentationSimilarity,
+                                      GraphSimplEx, GraphTracIn)
+from interpretability.feature import FeatureImportance, GraphFeatureAblation
+from interpretability.robustness import (accuracy, cos_similarity,
+                                         graph_explanation_equivariance,
+                                         graph_explanation_invariance,
+                                         graph_model_invariance)
+from models.graphs import ClassifierMutagenicity
+from utils.misc import set_random_seed
+from utils.plots import mc_convergence_plot, single_robustness_plots
+from utils.symmetries import GraphPermutation
 
 
 def train_mut_model(
@@ -37,7 +33,7 @@ def train_mut_model(
     latent_dim: int,
     batch_size: int,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/mut/",
+    model_dir: Path = Path.cwd() / "results/mut/",
     data_dir: Path = Path.cwd() / "datasets/mut",
 ) -> None:
     logging.info("Fitting the Mutagenicity classifiers")
@@ -67,7 +63,7 @@ def feature_importance(
     latent_dim: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/mut/",
+    model_dir: Path = Path.cwd() / "results/mut/",
     data_dir: Path = Path.cwd() / "datasets/mut",
     N_samp: int = 1,
 ) -> None:
@@ -90,7 +86,7 @@ def feature_importance(
         os.makedirs(save_dir)
     graph_perm = GraphPermutation()
     metrics = []
-    logging.info(f"Now working with Mutagenicity classifier")
+    logging.info("Now working with Mutagenicity classifier")
     model_inv = graph_model_invariance(
         model, graph_perm, test_loader, device, N_samp=N_samp
     )
@@ -124,7 +120,7 @@ def example_importance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/mut/",
+    model_dir: Path = Path.cwd() / "results/mut/",
     data_dir: Path = Path.cwd() / "datasets/mut",
     n_train: int = 100,
     recursion_depth: int = 100,
@@ -242,7 +238,7 @@ def concept_importance(
     batch_size: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/mut/",
+    model_dir: Path = Path.cwd() / "results/mut/",
     data_dir: Path = Path.cwd() / "datasets/mut",
     concept_set_size: int = 500,
     N_samp: int = 1,
@@ -328,7 +324,7 @@ def mc_convergence(
     latent_dim: int,
     plot: bool,
     model_name: str = "model",
-    model_dir: Path = Path.cwd() / f"results/mut/",
+    model_dir: Path = Path.cwd() / "results/mut/",
     data_dir: Path = Path.cwd() / "datasets/mut",
     N_samp_max: int = 100,
 ) -> None:
