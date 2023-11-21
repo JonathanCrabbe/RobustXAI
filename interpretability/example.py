@@ -116,7 +116,7 @@ class TracIn(ExampleBasedExplainer):
         self.checkpoints = (
             checkpoint_files
             if checkpoint_files is not None
-            else model.checkpoints_files
+            else [Path(chkpt) for chkpt in model.checkpoints_files]
         )
         self.device = X_train.device
         train_subset = TensorDataset(X_train, Y_train)
@@ -174,7 +174,7 @@ class TracIn(ExampleBasedExplainer):
                 unit="checkpoint",
             ):
                 self.model.load_state_dict(
-                    self.load_model_dict(checkpoint), strict=False
+                    self.load_model_dict(Path(checkpoint)), strict=False
                 )
                 loss = self.loss_function(self.model(x_train), y_train)
                 if grad is not None:
@@ -196,7 +196,7 @@ class TracIn(ExampleBasedExplainer):
     def load_model_dict(checkpoint_path: Path) -> Any:
         model_dict = torch.load(checkpoint_path)
         # If the checkpoint is a pytorch lightning checkpoint we need to extract the model state dict
-        if ".ckpt" in checkpoint_path.name:
+        if ".ckpt" in Path(checkpoint_path).name:
             model_dict = model_dict["state_dict"]
         return model_dict
 

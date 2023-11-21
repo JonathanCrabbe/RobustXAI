@@ -177,7 +177,8 @@ def relaxing_invariance_plots(
         edgecolor="black",
         alpha=0.5,
         style="Explanation",
-        markers=markers[: metrics_df["Explanation"].nunique()],
+        markers=markers,
+        # markers=markers[: metrics_df["Explanation"].nunique()],
         s=100,
     )
     plt.errorbar(
